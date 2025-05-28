@@ -1,10 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs, router } from "expo-router";
-import { TouchableOpacity } from "react-native";
+import { Tabs } from "expo-router";
 
 export default function TabsLayout() {
-    const handleProfilePress = () => router.push("/profile");
-
     return (
         <Tabs
             screenOptions={{
@@ -28,14 +25,6 @@ export default function TabsLayout() {
                     fontWeight: "300",
                     fontSize: 18,
                 },
-                headerRight: () => (
-                    <TouchableOpacity
-                        onPress={handleProfilePress}
-                        style={{ marginRight: 16 }}
-                    >
-                        <Ionicons name="person-circle-outline" size={24} color="#000" />
-                    </TouchableOpacity>
-                ),
             }}
         >
             <Tabs.Screen
@@ -53,6 +42,15 @@ export default function TabsLayout() {
                     title: "Friends",
                     tabBarIcon: ({ color, size }) => (
                         <Ionicons name="people-outline" size={size} color={color} />
+                    ),
+                }}
+            />
+            <Tabs.Screen
+                name="profile"
+                options={{
+                    title: "Profil",
+                    tabBarIcon: ({ color, size }) => (
+                        <Ionicons name="person-circle-outline" size={size} color={color} />
                     ),
                 }}
             />

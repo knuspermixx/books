@@ -2,10 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { signOut } from "firebase/auth";
 import { useEffect, useState } from "react";
 import { Alert, FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { auth } from "../config/firebaseConfig";
-import { BOOK_GENRES, updateGenres, updateStatus, updateUsername } from "../config/firestoreService";
-import GenreSelector from "./components/GenreSelector";
-import { useAuth } from "./contexts/AuthContext";
+import { auth } from "../../config/firebaseConfig";
+import { BOOK_GENRES, updateGenres, updateStatus, updateUsername } from "../../config/firestoreService";
+import GenreSelector from "../components/GenreSelector";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function ProfileScreen() {
     const { user, userData, refreshUserData } = useAuth();
