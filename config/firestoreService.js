@@ -122,3 +122,29 @@ export async function updateGenres(userId, genres) {
     throw error;
   }
 }
+
+/**
+ * Benutzerstatus aktualisieren
+ */
+export async function updateStatus(userId, status) {
+  try {
+    await updateUserDocument(userId, { status });
+    console.log("Benutzerstatus erfolgreich aktualisiert");
+  } catch (error) {
+    console.error("Fehler beim Aktualisieren des Benutzerstatus:", error);
+    throw error;
+  }
+}
+
+/**
+ * Profilbild URL aktualisieren
+ */
+export async function updateProfileImage(userId, profileImageUrl) {
+  try {
+    await updateUserDocument(userId, { profileImageUrl });
+    console.log("Profilbild erfolgreich aktualisiert");
+  } catch (error) {
+    console.error("Fehler beim Aktualisieren des Profilbilds:", error);
+    throw error;
+  }
+}

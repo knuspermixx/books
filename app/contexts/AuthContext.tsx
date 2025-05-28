@@ -8,6 +8,8 @@ interface UserData {
   username?: string;
   email: string;
   genres: string[];
+  status?: string;
+  profileImageUrl?: string;
   createdAt: string;
   updatedAt: string;
 }
