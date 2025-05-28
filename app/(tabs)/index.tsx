@@ -8,9 +8,6 @@ export default function LibraryScreen() {
         <View style={styles.container}>
             <Text style={styles.title}>Bibliothek</Text>
             <Text style={styles.subtitle}>Willkommen, {user?.email}</Text>
-            <Text style={styles.description}>
-                Hier können Sie Ihre Bücher verwalten.
-            </Text>
         </View>
     );
 }
@@ -18,25 +15,21 @@ export default function LibraryScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "#f5f5f5",
-        padding: 20,
+        backgroundColor: "#fff",
+        padding: 32,
         justifyContent: "center",
         alignItems: "center",
+        gap: 12,
     },
     title: {
         fontSize: 24,
-        fontWeight: "bold",
-        color: "#333",
-        marginBottom: 10,
+        fontWeight: "300",
+        color: "#000",
+        letterSpacing: -0.5,
     },
     subtitle: {
         fontSize: 16,
         color: "#666",
-        marginBottom: 20,
-    },
-    description: {
-        fontSize: 14,
-        color: "#888",
-        textAlign: "center",
+        fontWeight: "400",
     },
 });

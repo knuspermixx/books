@@ -3,36 +3,37 @@ import { Tabs, router } from "expo-router";
 import { TouchableOpacity } from "react-native";
 
 export default function TabsLayout() {
-    function handleProfilePress() {
-        router.push("/profile");
-    }
+    const handleProfilePress = () => router.push("/profile");
 
     return (
         <Tabs
             screenOptions={{
-                tabBarActiveTintColor: "#1976d2",
-                tabBarInactiveTintColor: "#666",
+                tabBarActiveTintColor: "#000",
+                tabBarInactiveTintColor: "#999",
                 tabBarStyle: {
                     backgroundColor: "#fff",
                     borderTopWidth: 1,
-                    borderTopColor: "#e0e0e0",
+                    borderTopColor: "#eee",
                     height: 60,
                     paddingBottom: 8,
                     paddingTop: 8,
                 },
                 headerStyle: {
-                    backgroundColor: "#1976d2",
+                    backgroundColor: "#fff",
+                    borderBottomWidth: 1,
+                    borderBottomColor: "#eee",
                 },
-                headerTintColor: "#fff",
+                headerTintColor: "#000",
                 headerTitleStyle: {
-                    fontWeight: "bold",
+                    fontWeight: "300",
+                    fontSize: 18,
                 },
                 headerRight: () => (
                     <TouchableOpacity
                         onPress={handleProfilePress}
-                        style={{ marginRight: 15 }}
+                        style={{ marginRight: 16 }}
                     >
-                        <Ionicons name="person-circle" size={28} color="#fff" />
+                        <Ionicons name="person-circle-outline" size={24} color="#000" />
                     </TouchableOpacity>
                 ),
             }}
@@ -42,16 +43,7 @@ export default function TabsLayout() {
                 options={{
                     title: "Bibliothek",
                     tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="library" size={size} color={color} />
-                    ),
-                }}
-            />
-            <Tabs.Screen
-                name="discover"
-                options={{
-                    title: "Discover",
-                    tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="search" size={size} color={color} />
+                        <Ionicons name="library-outline" size={size} color={color} />
                     ),
                 }}
             />
@@ -60,7 +52,7 @@ export default function TabsLayout() {
                 options={{
                     title: "Friends",
                     tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="people" size={size} color={color} />
+                        <Ionicons name="people-outline" size={size} color={color} />
                     ),
                 }}
             />

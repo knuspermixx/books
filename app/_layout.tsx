@@ -13,9 +13,14 @@ export default function RootLayout() {
           options={{ 
             headerShown: true, 
             title: "Profil",
-            headerStyle: { backgroundColor: "#1976d2" },
-            headerTintColor: "#fff",
-            headerTitleStyle: { fontWeight: "bold" }
+            headerStyle: { 
+              backgroundColor: "#fff"
+            },
+            headerTintColor: "#000",
+            headerTitleStyle: { 
+              fontWeight: "300",
+              fontSize: 18
+            }
           }} 
         />
       </Stack>
