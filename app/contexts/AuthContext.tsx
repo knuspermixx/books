@@ -7,6 +7,7 @@ import { createUserDocument, getUserDocument } from "../../config/firestoreServi
 interface UserData {
   username?: string;
   email: string;
+  genres: string[];
   createdAt: string;
   updatedAt: string;
 }
