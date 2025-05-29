@@ -28,7 +28,7 @@ const AuthContext = createContext<AuthContextType>({
   refreshUserData: async () => {},
 });
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export default function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,4 +87,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+export { AuthProvider };
 export const useAuth = () => useContext(AuthContext);

@@ -1,5 +1,5 @@
 import { Stack } from "expo-router";
-import { AuthProvider } from "./contexts/AuthContext";
+import AuthProvider from "./contexts/AuthContext";
 
 export default function RootLayout() {
   return (
@@ -8,6 +8,21 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="auth" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen 
+          name="book/[id]" 
+          options={{
+            headerShown: true,
+            title: "Buchdetails",
+            headerStyle: {
+              backgroundColor: "#fff",
+            },
+            headerTintColor: "#000",
+            headerTitleStyle: {
+              fontWeight: "300",
+              fontSize: 18,
+            },
+          }}
+        />
       </Stack>
     </AuthProvider>
   );

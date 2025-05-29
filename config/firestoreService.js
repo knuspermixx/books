@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "./firebaseConfig";
 
 // Verfügbare Buchgenres
@@ -145,6 +145,144 @@ export async function updateProfileImage(userId, profileImageUrl) {
     console.log("Profilbild erfolgreich aktualisiert");
   } catch (error) {
     console.error("Fehler beim Aktualisieren des Profilbilds:", error);
+    throw error;
+  }
+}
+
+/**
+ * Rezension für ein Buch erstellen
+ */
+export async function createReview(bookId, reviewData) {
+  try {
+    const reviewsRef = collection(db, "reviews");
+    const reviewDoc = await addDoc(reviewsRef, {
+      bookId,
+      ...reviewData,
+      likes: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    console.log("Rezension erfolgreich erstellt");
+    return reviewDoc.id;
+  } catch (error) {
+    console.error("Fehler beim Erstellen der Rezension:", error);
+    throw error;
+  }
+}
+
+/**
+ * Alle Rezensionen für ein Buch abrufen
+ */
+export async function getBookReviews(bookId) {
+  try {
+    const reviewsRef = collection(db, "reviews");
+    // Verwende nur where-Filter ohne orderBy um Index-Anforderung zu vermeiden
+    const q = query(
+      reviewsRef,
+      where("bookId", "==", bookId)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const reviews = [];
+    
+    querySnapshot.forEach((doc) => {
+      reviews.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    // Sortiere client-seitig nach createdAt (neueste zuerst)
+    reviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    return reviews;
+  } catch (error) {
+    console.error("Fehler beim Abrufen der Rezensionen:", error);
+    throw error;
+  }
+}
+
+/**
+ * Rezension liken/unliken
+ */
+export async function toggleReviewLike(reviewId, userId) {
+  try {
+    const reviewRef = doc(db, "reviews", reviewId);
+    const reviewDoc = await getDoc(reviewRef);
+    
+    if (reviewDoc.exists()) {
+      const reviewData = reviewDoc.data();
+      const likes = reviewData.likes || [];
+      const isLiked = likes.includes(userId);
+      
+      const updatedLikes = isLiked
+        ? likes.filter(id => id !== userId)
+        : [...likes, userId];
+      
+      await updateDoc(reviewRef, {
+        likes: updatedLikes,
+        updatedAt: new Date().toISOString(),
+      });
+      
+      console.log("Rezension-Like erfolgreich aktualisiert");
+      return !isLiked;
+    }
+  } catch (error) {
+    console.error("Fehler beim Aktualisieren des Rezension-Likes:", error);
+    throw error;
+  }
+}
+
+/**
+ * Rezension aktualisieren (nur eigene)
+ */
+export async function updateReview(reviewId, userId, updates) {
+  try {
+    const reviewRef = doc(db, "reviews", reviewId);
+    const reviewDoc = await getDoc(reviewRef);
+    
+    if (reviewDoc.exists()) {
+      const reviewData = reviewDoc.data();
+      
+      // Prüfen ob der Benutzer der Ersteller ist
+      if (reviewData.userId !== userId) {
+        throw new Error("Nicht berechtigt, diese Rezension zu bearbeiten");
+      }
+      
+      await updateDoc(reviewRef, {
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      });
+      
+      console.log("Rezension erfolgreich aktualisiert");
+    }
+  } catch (error) {
+    console.error("Fehler beim Aktualisieren der Rezension:", error);
+    throw error;
+  }
+}
+
+/**
+ * Rezension löschen (nur eigene)
+ */
+export async function deleteReview(reviewId, userId) {
+  try {
+    const reviewRef = doc(db, "reviews", reviewId);
+    const reviewDoc = await getDoc(reviewRef);
+    
+    if (reviewDoc.exists()) {
+      const reviewData = reviewDoc.data();
+      
+      // Prüfen ob der Benutzer der Ersteller ist
+      if (reviewData.userId !== userId) {
+        throw new Error("Nicht berechtigt, diese Rezension zu löschen");
+      }
+      
+      await deleteDoc(reviewRef);
+      console.log("Rezension erfolgreich gelöscht");
+    }
+  } catch (error) {
+    console.error("Fehler beim Löschen der Rezension:", error);
     throw error;
   }
 }

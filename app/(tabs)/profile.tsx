@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { signOut } from "firebase/auth";
 import { useEffect, useState } from "react";
 import { Alert, FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -15,17 +16,89 @@ export default function ProfileScreen() {
     const [status, setStatus] = useState(userData?.status || "Was liest du gerade?");
     const [saving, setSaving] = useState(false);
 
-    // Placeholder für bereits gelesene Bücher
+    // Placeholder für bereits gelesene Bücher mit Rezensionen
     const [readBooks] = useState([
-        { id: 1, title: "Der Herr der Ringe", author: "J.R.R. Tolkien", cover: "📚", rating: 5 },
-        { id: 2, title: "Harry Potter", author: "J.K. Rowling", cover: "⚡", rating: 4 },
-        { id: 3, title: "1984", author: "George Orwell", cover: "👁", rating: 5 },
-        { id: 4, title: "Der Alchemist", author: "Paulo Coelho", cover: "✨", rating: 3 },
-        { id: 5, title: "Stolz und Vorurteil", author: "Jane Austen", cover: "💕", rating: 4 },
-        { id: 6, title: "Der Kleine Prinz", author: "Antoine de Saint-Exupéry", cover: "🌟", rating: 5 },
-        { id: 7, title: "Die Verwandlung", author: "Franz Kafka", cover: "🪲", rating: 4 },
-        { id: 8, title: "Das Parfum", author: "Patrick Süskind", cover: "🌹", rating: 4 },
-        { id: 9, title: "Der Steppenwolf", author: "Hermann Hesse", cover: "🐺", rating: 3 },
+        { 
+            id: 1, 
+            title: "Der Herr der Ringe", 
+            author: "J.R.R. Tolkien", 
+            cover: "📚", 
+            rating: 5,
+            review: "Ein absolutes Meisterwerk der Fantasy-Literatur. Tolkiens Weltenbau ist unübertroffen und die Geschichte zeitlos fesselnd.",
+            readDate: "2024-03-15"
+        },
+        { 
+            id: 2, 
+            title: "Harry Potter", 
+            author: "J.K. Rowling", 
+            cover: "⚡", 
+            rating: 4,
+            review: "Magische Geschichte, die Jung und Alt begeistert. Perfekt für alle, die gerne in fantastische Welten eintauchen.",
+            readDate: "2024-02-28"
+        },
+        { 
+            id: 3, 
+            title: "1984", 
+            author: "George Orwell", 
+            cover: "👁", 
+            rating: 5,
+            review: "Erschreckend aktuell und prophetisch. Ein Buch, das zum Nachdenken über Überwachung und Freiheit anregt.",
+            readDate: "2024-01-20"
+        },
+        { 
+            id: 4, 
+            title: "Der Alchemist", 
+            author: "Paulo Coelho", 
+            cover: "✨", 
+            rating: 3,
+            review: "Inspirierende Botschaft über das Verfolgen der eigenen Träume, auch wenn die Handlung etwas vorhersehbar ist.",
+            readDate: "2023-12-10"
+        },
+        { 
+            id: 5, 
+            title: "Stolz und Vorurteil", 
+            author: "Jane Austen", 
+            cover: "💕", 
+            rating: 4,
+            review: "Wunderbare Charakterentwicklung und zeitlose Romantik. Austens Humor und scharfe Beobachtungen sind brilliant.",
+            readDate: "2023-11-25"
+        },
+        { 
+            id: 6, 
+            title: "Der Kleine Prinz", 
+            author: "Antoine de Saint-Exupéry", 
+            cover: "🌟", 
+            rating: 5,
+            review: "Berührende Geschichte über Freundschaft, Liebe und die Wichtigkeit der kleinen Dinge im Leben.",
+            readDate: "2023-10-18"
+        },
+        { 
+            id: 7, 
+            title: "Die Verwandlung", 
+            author: "Franz Kafka", 
+            cover: "🪲", 
+            rating: 4,
+            review: "Verstörend und faszinierend zugleich. Kafkas surreale Erzählweise regt zum Nachdenken an.",
+            readDate: "2023-09-05"
+        },
+        { 
+            id: 8, 
+            title: "Das Parfum", 
+            author: "Patrick Süskind", 
+            cover: "🌹", 
+            rating: 4,
+            review: "Düster und atmosphärisch geschrieben. Die Beschreibungen der Düfte sind außergewöhnlich detailreich.",
+            readDate: "2023-08-12"
+        },
+        { 
+            id: 9, 
+            title: "Der Steppenwolf", 
+            author: "Hermann Hesse", 
+            cover: "🐺", 
+            rating: 3,
+            review: "Philosophisch tiefgreifend, aber stellenweise schwer zugänglich. Hesses Reflexionen über das moderne Leben sind wertvoll.",
+            readDate: "2023-07-30"
+        },
     ]);
 
     // Update local state when userData changes
@@ -109,14 +182,32 @@ export default function ProfileScreen() {
     };
 
     const renderBookItem = ({ item }: { item: any }) => (
-        <View style={styles.bookGridItem}>
+        <TouchableOpacity 
+            style={styles.bookListItem}
+            onPress={() => router.push(`/book/${item.id}` as any)}
+            activeOpacity={0.7}
+        >
             <View style={styles.bookCover}>
                 <Text style={styles.bookEmoji}>{item.cover}</Text>
             </View>
-            <Text style={styles.bookTitle} numberOfLines={2}>{item.title}</Text>
-            <Text style={styles.bookAuthor} numberOfLines={1}>{item.author}</Text>
-            {renderStars(item.rating)}
-        </View>
+            <View style={styles.bookInfo}>
+                <View style={styles.bookHeader}>
+                    <Text style={styles.bookTitle} numberOfLines={2}>{item.title}</Text>
+                    <Text style={styles.bookAuthor}>{item.author}</Text>
+                    <View style={styles.ratingRow}>
+                        {renderStars(item.rating)}
+                        <Text style={styles.readDate}>
+                            Gelesen am {new Date(item.readDate).toLocaleDateString('de-DE')}
+                        </Text>
+                    </View>
+                </View>
+                {item.review && (
+                    <View style={styles.reviewSection}>
+                        <Text style={styles.reviewText} numberOfLines={3}>{item.review}</Text>
+                    </View>
+                )}
+            </View>
+        </TouchableOpacity>
     );
 
     return (
@@ -206,7 +297,6 @@ export default function ProfileScreen() {
 
             {/* Lieblings-Genres */}
             <View style={styles.genresSection}>
-                <Text style={styles.sectionTitle}>Lieblings-Genres</Text>
                 {isEditing ? (
                     <GenreSelector
                         availableGenres={BOOK_GENRES}
@@ -231,15 +321,15 @@ export default function ProfileScreen() {
             {/* Bereits gelesene Bücher */}
             {!isEditing && (
                 <View style={styles.booksSection}>
+                    <Text style={styles.sectionTitle}>Rezessionen</Text>
                     <FlatList
                         data={readBooks}
                         renderItem={renderBookItem}
-                        numColumns={3}
                         showsVerticalScrollIndicator={false}
-                        contentContainerStyle={styles.booksGrid}
+                        contentContainerStyle={styles.booksList}
                         keyExtractor={(item) => item.id.toString()}
-                        columnWrapperStyle={styles.bookRow}
                         scrollEnabled={false}
+                        ItemSeparatorComponent={() => <View style={styles.bookSeparator} />}
                     />
                 </View>
             )}
@@ -277,111 +367,97 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: "#fff",
-        padding: 24,
+        padding: 16,
     },
     editButton: {
         position: "absolute",
-        top: 20,
-        right: 20,
+        top: 16,
+        right: 16,
         zIndex: 1,
         padding: 8,
-        borderRadius: 20,
-        backgroundColor: "#f8f8f8",
+        backgroundColor: "transparent",
     },
     profileSection: {
-        paddingTop: 60,
-        paddingBottom: 40,
-        gap: 24,
+        paddingTop: 48,
+        paddingBottom: 24,
     },
     profileHeader: {
         flexDirection: "row",
         alignItems: "flex-start",
-        gap: 20,
-        paddingHorizontal: 4,
+        gap: 16,
+        marginBottom: 16,
     },
     profileImageContainer: {
         alignItems: "center",
-        gap: 12,
+        gap: 8,
         flexShrink: 0,
     },
     profileInfo: {
         flex: 1,
-        gap: 8,
+        gap: 4,
     },
     profileImagePlaceholder: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
-        backgroundColor: "#f8f8f8",
-        borderWidth: 2,
+        width: 80,
+        height: 80,
+        borderRadius: 4,
+        backgroundColor: "#f5f5f5",
+        borderWidth: 1,
         borderColor: "#e0e0e0",
         justifyContent: "center",
         alignItems: "center",
     },
     imageEditButton: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 6,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 16,
-        backgroundColor: "#f8f8f8",
-        borderWidth: 1,
-        borderColor: "#e0e0e0",
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        backgroundColor: "transparent",
     },
     imageEditText: {
-        fontSize: 12,
+        fontSize: 11,
         color: "#666",
         fontWeight: "400",
+        textDecorationLine: "underline",
     },
     usernameSection: {
         width: "100%",
     },
     username: {
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: "600",
         color: "#000",
+        marginBottom: 2,
     },
     usernameInput: {
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: "600",
         color: "#000",
         borderBottomWidth: 1,
         borderBottomColor: "#e0e0e0",
-        paddingHorizontal: 4,
+        paddingHorizontal: 0,
         paddingVertical: 4,
+        marginBottom: 2,
     },
     statusSection: {
         width: "100%",
     },
     status: {
-        fontSize: 15,
+        fontSize: 14,
         color: "#666",
-        fontStyle: "italic",
-        lineHeight: 20,
+        lineHeight: 18,
     },
     statusInput: {
-        fontSize: 15,
+        fontSize: 14,
         color: "#666",
-        fontStyle: "italic",
         borderWidth: 1,
         borderColor: "#e0e0e0",
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        minHeight: 40,
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+        minHeight: 32,
         textAlignVertical: "top",
     },
     statsSection: {
         flexDirection: "row",
-        justifyContent: "space-around",
-        alignItems: "center",
-        paddingHorizontal: 40,
-        paddingVertical: 20,
-        marginTop: 12,
-        backgroundColor: "#fafafa",
-        borderRadius: 12,
-        marginHorizontal: 16,
+        justifyContent: "space-between",
+        paddingVertical: 16,
     },
     statItem: {
         alignItems: "center",
@@ -405,20 +481,18 @@ const styles = StyleSheet.create({
         marginHorizontal: 8,
     },
     genresSection: {
-        paddingHorizontal: 20,
-        paddingVertical: 20,
-        gap: 16,
+        paddingVertical: 24,
+        borderBottomWidth: 1,
+        borderBottomColor: "#e0e0e0",
     },
     booksSection: {
-        paddingHorizontal: 20,
-        paddingVertical: 20,
-        gap: 16,
+        paddingVertical: 24,
     },
     sectionTitle: {
         fontSize: 18,
         fontWeight: "600",
         color: "#000",
-        marginBottom: 8,
+        marginBottom: 16,
     },
     genreDisplay: {
         flexDirection: "row",
@@ -443,46 +517,78 @@ const styles = StyleSheet.create({
         color: "#ccc",
         fontStyle: "italic",
     },
-    booksGrid: {
+    booksList: {
         paddingBottom: 20,
     },
-    bookRow: {
-        justifyContent: "space-between",
+    bookSeparator: {
+        height: 16,
     },
-    bookGridItem: {
-        width: "31%",
-        marginBottom: 24,
-        alignItems: "center",
-        gap: 6,
+    bookListItem: {
+        flexDirection: "row",
+        backgroundColor: "#fff",
+        paddingVertical: 16,
+        paddingHorizontal: 0,
+        gap: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: "#f0f0f0",
     },
     bookCover: {
-        width: "100%",
-        aspectRatio: 0.7,
+        width: 60,
+        height: 80,
         borderRadius: 4,
         backgroundColor: "#fafafa",
-        borderWidth: 0.5,
-        borderColor: "#e8e8e8",
+        borderWidth: 1,
+        borderColor: "#e0e0e0",
         justifyContent: "center",
         alignItems: "center",
-        marginBottom: 8,
+        flexShrink: 0,
     },
     bookEmoji: {
         fontSize: 28,
     },
+    bookInfo: {
+        flex: 1,
+        gap: 8,
+    },
+    bookHeader: {
+        gap: 4,
+    },
     bookTitle: {
-        fontSize: 11,
-        fontWeight: "500",
+        fontSize: 16,
+        fontWeight: "600",
         color: "#000",
-        textAlign: "center",
-        lineHeight: 14,
-        marginBottom: 2,
+        lineHeight: 20,
     },
     bookAuthor: {
-        fontSize: 9,
+        fontSize: 14,
         color: "#666",
-        textAlign: "center",
         fontWeight: "400",
-        marginBottom: 4,
+    },
+    ratingRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        marginTop: 4,
+    },
+    readDate: {
+        fontSize: 12,
+        color: "#999",
+        fontStyle: "italic",
+    },
+    reviewSection: {
+        gap: 4,
+        paddingTop: 8,
+    },
+    reviewLabel: {
+        fontSize: 12,
+        fontWeight: "500",
+        color: "#333",
+    },
+    reviewText: {
+        fontSize: 13,
+        color: "#666",
+        lineHeight: 18,
+        fontStyle: "italic",
     },
     starsContainer: {
         flexDirection: "row",
@@ -492,15 +598,14 @@ const styles = StyleSheet.create({
     },
     editActions: {
         flexDirection: "row",
-        gap: 16,
-        paddingHorizontal: 20,
-        paddingTop: 20,
+        gap: 12,
+        paddingTop: 24,
         paddingBottom: 40,
     },
     button: {
         paddingVertical: 12,
         paddingHorizontal: 24,
-        borderRadius: 8,
+        borderRadius: 4,
         alignItems: "center",
         flex: 1,
         minHeight: 48,
@@ -528,10 +633,9 @@ const styles = StyleSheet.create({
         backgroundColor: "#000",
         paddingVertical: 12,
         paddingHorizontal: 24,
-        borderRadius: 8,
+        borderRadius: 4,
         alignItems: "center",
-        marginHorizontal: 20,
-        marginTop: 20,
+        marginTop: 24,
         marginBottom: 40,
     },
     signOutButtonText: {
