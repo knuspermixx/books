@@ -19,6 +19,8 @@ interface AuthContextType {
   userData: UserData | null;
   loading: boolean;
   refreshUserData: () => Promise<void>;
+  refreshKey: number;
+  triggerRefresh: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -26,12 +28,19 @@ const AuthContext = createContext<AuthContextType>({
   userData: null,
   loading: true,
   refreshUserData: async () => {},
+  refreshKey: 0,
+  triggerRefresh: () => {},
 });
 
 export default function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const triggerRefresh = () => {
+    setRefreshKey(prev => prev + 1);
+  };
 
   const refreshUserData = async () => {
     if (user) {
@@ -81,7 +90,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, userData, loading, refreshUserData }}>
+    <AuthContext.Provider value={{ user, userData, loading, refreshUserData, refreshKey, triggerRefresh }}>
       {children}
     </AuthContext.Provider>
   );

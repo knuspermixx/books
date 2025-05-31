@@ -2,8 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
+    ActivityIndicator,
     Alert,
     FlatList,
+    Image,
     ScrollView,
     StyleSheet,
     Text,
@@ -11,401 +13,19 @@ import {
     TouchableOpacity,
     View
 } from "react-native";
-import { createReview, getBookReviews } from "../../config/firestoreService";
+import {
+    addBookToShelf,
+    createReview,
+    DEFAULT_LIBRARY_SHELVES,
+    findBookInStandardShelves,
+    getBookReviews,
+    getUserShelves,
+    isBookInShelf
+} from "../../config/firestoreService";
+import { Book, getBookById } from "../../services/googleBooksApi";
 import { useAuth } from "../contexts/AuthContext";
 
-// Hardcodierte Buchdaten (Google Books API Format)
-const BOOKS_DATA = {
-    "1": {
-        id: "1",
-        title: "Der Herr der Ringe",
-        authors: ["J.R.R. Tolkien"],
-        description: "Ein episches Fantasy-Abenteuer in Mittelerde, in dem Frodo Beutlin den Einen Ring zerstören muss, um die Welt vor dem dunklen Herrscher Sauron zu retten. Eine zeitlose Geschichte über Freundschaft, Mut und die Macht des Guten über das Böse.",
-        publishedDate: "1954",
-        pageCount: 1216,
-        categories: ["Fantasy", "Klassiker"],
-        isbn: "9783608938043",
-        publisher: "Klett-Cotta",
-        language: "de",
-        imageLinks: {
-            thumbnail: "https://via.placeholder.com/300x450/6B73FF/FFFFFF?text=LOTR"
-        },
-        cover: "📚",
-        reviews: [
-            {
-                id: "r1-1",
-                bookId: "1",
-                userId: "user1",
-                username: "FantasyFan42",
-                rating: 5,
-                text: "Ein absolutes Meisterwerk! Tolkien hat eine so detailreiche Welt geschaffen, dass man sich komplett darin verliert. Die Charakterentwicklung ist grandios und die Freundschaft zwischen Frodo und Sam ist einfach herzerwärmend.",
-                createdAt: "2024-12-15T10:30:00Z",
-                likes: ["user3", "user5"],
-                isFriend: true
-            },
-            {
-                id: "r1-2", 
-                bookId: "1",
-                userId: "user2",
-                username: "BücherWurm",
-                rating: 4,
-                text: "",
-                createdAt: "2024-12-10T14:20:00Z",
-                likes: ["user1"],
-                isFriend: false
-            },
-            {
-                id: "r1-3",
-                bookId: "1", 
-                userId: "user4",
-                username: "Leseratte88",
-                rating: 5,
-                text: "Zeitlos und magisch! Jedes Mal wenn ich es lese, entdecke ich neue Details. Die Sprache ist poetisch und die Geschichte voller Hoffnung trotz der dunklen Momente.",
-                createdAt: "2024-11-28T09:15:00Z",
-                likes: ["user1", "user2", "user5"],
-                isFriend: false
-            }
-        ]
-    },
-    "2": {
-        id: "2",
-        title: "Harry Potter und der Stein der Weisen",
-        authors: ["J.K. Rowling"],
-        description: "Der elfjährige Harry Potter erfährt an seinem Geburtstag, dass er ein Zauberer ist und in Hogwarts, der Schule für Hexerei und Zauberei, aufgenommen wurde. Dort entdeckt er nicht nur seine magischen Fähigkeiten, sondern auch ein dunkles Geheimnis aus seiner Vergangenheit.",
-        publishedDate: "1997",
-        pageCount: 336,
-        categories: ["Fantasy", "Young Adult"],
-        isbn: "9783551551672",
-        publisher: "Carlsen",
-        language: "de",
-        imageLinks: {
-            thumbnail: "https://via.placeholder.com/300x450/7B1FA2/FFFFFF?text=HP"
-        },
-        cover: "⚡",
-        reviews: [
-            {
-                id: "r2-1",
-                bookId: "2",
-                userId: "user3",
-                username: "MagieFreund",
-                rating: 5,
-                text: "Der perfekte Einstieg in die Zauberwelt! Rowling schafft es, eine komplexe magische Welt so zu erklären, dass sie völlig logisch erscheint. Harry ist ein wunderbar sympathischer Protagonist.",
-                createdAt: "2024-12-12T16:45:00Z",
-                likes: ["user1", "user4"],
-                isFriend: true
-            },
-            {
-                id: "r2-2",
-                bookId: "2", 
-                userId: "user5",
-                username: "Nostalgiker",
-                rating: 4,
-                text: "Ein Kindheitsfavorit! Auch als Erwachsener noch sehr unterhaltsam. Die Nostalgie macht es noch schöner, aber objektiv betrachtet ist es eher ein solides Jugendbuch.",
-                createdAt: "2024-12-08T11:30:00Z",
-                likes: ["user2"],
-                isFriend: false
-            }
-        ]
-    },
-    "3": {
-        id: "3",
-        title: "1984",
-        authors: ["George Orwell"],
-        description: "In einer düsteren Zukunft überwacht der totalitäre Staat jeden Gedanken seiner Bürger. Winston Smith arbeitet im Ministerium für Wahrheit und verändert die Geschichte nach den Wünschen der Partei. Doch als er sich in Julia verliebt, beginnt er zu rebellieren.",
-        publishedDate: "1949",
-        pageCount: 416,
-        categories: ["Klassiker", "Science Fiction"],
-        isbn: "9783548234106",
-        publisher: "Ullstein",
-        language: "de",
-        imageLinks: {
-            thumbnail: "https://via.placeholder.com/300x450/424242/FFFFFF?text=1984"
-        },
-        cover: "👁",
-        reviews: [
-            {
-                id: "r3-1",
-                bookId: "3",
-                userId: "user6",
-                username: "PhilosophReader",
-                rating: 5,
-                text: "Erschreckend aktuell! Orwells Vision einer totalitären Gesellschaft ist beängstigend präzise. Ein Buch das zum Nachdenken anregt und vor Manipulation warnt. Sollte Pflichtlektüre sein.",
-                createdAt: "2024-12-05T20:15:00Z", 
-                likes: ["user1", "user3", "user7"],
-                isFriend: false
-            },
-            {
-                id: "r3-2",
-                bookId: "3",
-                userId: "user7", 
-                username: "Skeptiker",
-                rating: 4,
-                text: "Wichtiges Buch, aber sehr deprimierend. Die Botschaft ist klar und relevant, aber die Geschichte ist teilweise schwer zu ertragen. Trotzdem empfehlenswert für das Verständnis moderner Überwachung.",
-                createdAt: "2024-11-22T13:40:00Z",
-                likes: ["user2"],
-                isFriend: true
-            }
-        ]
-    },
-    "4": {
-        id: "4",
-        title: "Der Alchemist",
-        authors: ["Paulo Coelho"],
-        description: "Santiago, ein andalusischer Hirte, träumt wiederholt von einem Schatz bei den ägyptischen Pyramiden. Seine Reise dorthin wird zu einer Reise der Selbstfindung und spirituellen Erleuchtung. Ein zeitloser Roman über das Verfolgen der eigenen Träume.",
-        publishedDate: "1988",
-        pageCount: 188,
-        categories: ["Spiritualität", "Abenteuer"],
-        isbn: "9783257237580",
-        publisher: "Diogenes",
-        language: "de",
-        imageLinks: {
-            thumbnail: "https://via.placeholder.com/300x450/FF9800/FFFFFF?text=Alchemist"
-        },
-        cover: "✨",
-        reviews: [
-            {
-                id: "r4-1",
-                bookId: "4",
-                userId: "user8",
-                username: "SpiritSeeker",
-                rating: 5,
-                text: "Ein Buch das das Leben verändert! Coelhos Botschaft über das Verfolgen der eigenen Träume ist so einfach wie kraftvoll. Jedes Mal wenn ich es lese, entdecke ich neue Weisheiten.",
-                createdAt: "2024-12-01T08:20:00Z",
-                likes: ["user4", "user9"],
-                isFriend: true
-            },
-            {
-                id: "r4-2",
-                bookId: "4",
-                userId: "user9",
-                username: "RealistIn",
-                rating: 3,
-                text: "",
-                createdAt: "2024-11-18T15:10:00Z",
-                likes: [],
-                isFriend: false
-            }
-        ]
-    },
-    "5": {
-        id: "5",
-        title: "Stolz und Vorurteil",
-        authors: ["Jane Austen"],
-        description: "Elizabeth Bennet, eine kluge und unabhängige junge Frau, begegnet dem stolzen Mr. Darcy. Was als gegenseitige Abneigung beginnt, entwickelt sich langsam zu einer der größten Liebesgeschichten der Weltliteratur.",
-        publishedDate: "1813",
-        pageCount: 432,
-        categories: ["Romance", "Klassiker"],
-        isbn: "9783746626857",
-        publisher: "Aufbau",
-        language: "de",
-        imageLinks: {
-            thumbnail: "https://via.placeholder.com/300x450/E91E63/FFFFFF?text=P%26P"
-        },
-        cover: "💕",
-        reviews: [
-            {
-                id: "r5-1",
-                bookId: "5",
-                userId: "user10",
-                username: "RomanceFan",
-                rating: 5,
-                text: "Die perfekte Liebesgeschichte! Austen schreibt so witzig und intelligent. Elizabeth und Darcy sind unvergessliche Charaktere. Ein Buch das zeigt, dass wahre Liebe Zeit braucht.",
-                createdAt: "2024-11-30T19:25:00Z",
-                likes: ["user5", "user11"],
-                isFriend: true
-            },
-            {
-                id: "r5-2",
-                bookId: "5",
-                userId: "user11",
-                username: "ClassicLover",
-                rating: 4,
-                text: "Sehr gut geschrieben und zeitlos relevant. Austens gesellschaftskritischer Humor ist brilliant. Manchmal etwas langatmig, aber die Charakterentwicklung entschädigt dafür.",
-                createdAt: "2024-11-15T12:35:00Z",
-                likes: ["user10"],
-                isFriend: false
-            }
-        ]
-    },
-    "6": {
-        id: "6",
-        title: "Der Kleine Prinz",
-        authors: ["Antoine de Saint-Exupéry"],
-        description: "Ein Pilot strandet in der Sahara und trifft dort einen kleinen Prinzen von einem anderen Planeten. Durch ihre Begegnung lernt er wichtige Lektionen über Freundschaft, Liebe und was wirklich wichtig im Leben ist.",
-        publishedDate: "1943",
-        pageCount: 96,
-        categories: ["Klassiker", "Philosophie"],
-        isbn: "9783150096260",
-        publisher: "Reclam",
-        language: "de",
-        imageLinks: {
-            thumbnail: "https://via.placeholder.com/300x450/4CAF50/FFFFFF?text=Prince"
-        },
-        cover: "🌟",
-        reviews: [
-            {
-                id: "r6-1",
-                bookId: "6",
-                userId: "user12",
-                username: "Träumer",
-                rating: 5,
-                text: "Ein Buch für die Seele! So einfach und doch so tiefgreifend. Saint-Exupéry verpackt wichtige Lebenslektionen in eine wunderschöne Geschichte. Für Kinder und Erwachsene gleichermaßen wertvoll.",
-                createdAt: "2024-12-03T14:50:00Z",
-                likes: ["user6", "user8"],
-                isFriend: false
-            },
-            {
-                id: "r6-2",
-                bookId: "6",
-                userId: "user13",
-                username: "Elternteil",
-                rating: 4,
-                text: "Lese es immer wieder mit meinen Kindern. Jedes Mal entdecken wir neue Bedeutungen. Ein wunderbares Familienbuch das zum Nachdenken und Diskutieren anregt.",
-                createdAt: "2024-11-20T10:15:00Z",
-                likes: ["user12"],
-                isFriend: true
-            }
-        ]
-    },
-    "7": {
-        id: "7",
-        title: "Die Verwandlung",
-        authors: ["Franz Kafka"],
-        description: "Gregor Samsa erwacht eines Morgens als riesiges Ungeziefer. Diese surreale Verwandlung bringt nicht nur ihn, sondern seine ganze Familie in eine existenzielle Krise. Ein Meisterwerk der deutschsprachigen Literatur.",
-        publishedDate: "1915",
-        pageCount: 104,
-        categories: ["Klassiker", "Moderne Literatur"],
-        isbn: "9783150095270",
-        publisher: "Reclam",
-        language: "de",
-        imageLinks: {
-            thumbnail: "https://via.placeholder.com/300x450/795548/FFFFFF?text=Kafka"
-        },
-        cover: "🪲",
-        reviews: [
-            {
-                id: "r7-1",
-                bookId: "7",
-                userId: "user14",
-                username: "LitStudent",
-                rating: 4,
-                text: "Verstörend und brilliant! Kafka beschreibt Entfremdung und Isolation auf eine völlig neue Art. Die Geschichte ist surreal, aber die menschlichen Emotionen sind sehr real. Schwer verdaulich aber wichtig.",
-                createdAt: "2024-11-25T16:20:00Z",
-                likes: ["user6", "user15"],
-                isFriend: false
-            },
-            {
-                id: "r7-2",
-                bookId: "7",
-                userId: "user15",
-                username: "Modernist",
-                rating: 5,
-                text: "Ein Meisterwerk der modernen Literatur! Kafkas Stil ist einzigartig und seine Themen zeitlos. Die Verwandlung als Metapher für gesellschaftliche Ausgrenzung ist genial umgesetzt.",
-                createdAt: "2024-11-12T09:30:00Z",
-                likes: ["user14"],
-                isFriend: true
-            }
-        ]
-    },
-    "8": {
-        id: "8",
-        title: "Das Parfum",
-        authors: ["Patrick Süskind"],
-        description: "Jean-Baptiste Grenouille besitzt einen außergewöhnlichen Geruchssinn, aber selbst keinen Eigengeruch. Seine Obsession mit Düften führt ihn auf eine dunkle Reise durch das Paris des 18. Jahrhunderts.",
-        publishedDate: "1985",
-        pageCount: 368,
-        categories: ["Historisch", "Thriller"],
-        isbn: "9783257228007",
-        publisher: "Diogenes",
-        language: "de",
-        imageLinks: {
-            thumbnail: "https://via.placeholder.com/300x450/9C27B0/FFFFFF?text=Parfum"
-        },
-        cover: "🌹",
-        reviews: [
-            {
-                id: "r8-1",
-                bookId: "8",
-                userId: "user16",
-                username: "ThrillerFan",
-                rating: 4,
-                text: "Faszinierend und verstörend zugleich! Süskinds Schreibstil ist so bildhaft, dass man die Düfte förmlich riechen kann. Grenouille ist ein unvergesslicher Anti-Held. Nichts für schwache Nerven.",
-                createdAt: "2024-11-28T21:10:00Z",
-                likes: ["user17", "user18"],
-                isFriend: true
-            },
-            {
-                id: "r8-2",
-                bookId: "8", 
-                userId: "user17",
-                username: "HistoryBuff",
-                rating: 5,
-                text: "Brillante Mischung aus historischem Roman und Thriller! Das Paris des 18. Jahrhunderts ist so authentisch beschrieben. Die Geschichte ist dunkel aber fesselnd bis zur letzten Seite.",
-                createdAt: "2024-11-10T14:45:00Z",
-                likes: ["user16"],
-                isFriend: false
-            }
-        ]
-    },
-    "9": {
-        id: "9",
-        title: "Der Steppenwolf",
-        authors: ["Hermann Hesse"],
-        description: "Harry Haller, ein intellektueller Einzelgänger, kämpft mit seinem Doppelwesen als kultivierter Mensch und triebhafter Wolf. Ein psychologischer Roman über die Identitätssuche und den Konflikt zwischen Geist und Seele.",
-        publishedDate: "1927",
-        pageCount: 288,
-        categories: ["Klassiker", "Psychologie"],
-        isbn: "9783518395806",
-        publisher: "Suhrkamp",
-        language: "de",
-        imageLinks: {
-            thumbnail: "https://via.placeholder.com/300x450/607D8B/FFFFFF?text=Wolf"
-        },
-        cover: "🐺",
-        reviews: [
-            {
-                id: "r9-1",
-                bookId: "9",
-                userId: "user18",
-                username: "PsychoReader",
-                rating: 4,
-                text: "Tiefgreifend und introspektiv! Hesse erkundet die menschliche Psyche auf eine sehr persönliche Art. Harry Hallers innerer Konflikt ist nachvollziehbar und bewegend. Requires mehrmaliges Lesen.",
-                createdAt: "2024-11-08T11:20:00Z",
-                likes: ["user19"],
-                isFriend: false
-            },
-            {
-                id: "r9-2",
-                bookId: "9",
-                userId: "user19",
-                username: "Philosophy101", 
-                rating: 3,
-                text: "Interessant aber anstrengend zu lesen. Hesses philosophische Gedanken sind wertvoll, aber die Geschichte zieht sich manchmal. Für Fans von Selbstreflexion und Existentialismus zu empfehlen.",
-                createdAt: "2024-10-30T17:55:00Z",
-                likes: [],
-                isFriend: true
-            }
-        ]
-    }
-};
-
-interface BookData {
-    id: string;
-    title: string;
-    authors: string[];
-    description: string;
-    publishedDate: string;
-    pageCount: number;
-    categories: string[];
-    isbn: string;
-    publisher: string;
-    language: string;
-    imageLinks: {
-        thumbnail: string;
-    };
-    cover: string;
-    reviews?: Review[];
-}
+// Hardcodierte Buchdaten werden durch Google Books API ersetzt - entfernt
 
 interface Review {
     id: string;
@@ -422,43 +42,76 @@ interface Review {
 export default function BookDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
-    const { user, userData } = useAuth();
-    const [book, setBook] = useState<BookData | null>(null);
+    const { user, userData, triggerRefresh } = useAuth();
+    const [book, setBook] = useState<Book | null>(null);
     const [reviews, setReviews] = useState<Review[]>([]);
     const [loading, setLoading] = useState(true);
     const [showReviewForm, setShowReviewForm] = useState(false);
     const [newReview, setNewReview] = useState({ rating: 5, text: "" });
     const [submitting, setSubmitting] = useState(false);
+    
+    // Regale State
+    const [userShelves, setUserShelves] = useState<any[]>([]);
+    const [loadingShelves, setLoadingShelves] = useState(true);
+    const [bookInShelves, setBookInShelves] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
-        const loadBookData = () => {
-            const bookData = BOOKS_DATA[id as keyof typeof BOOKS_DATA];
-            if (bookData) {
-                setBook(bookData);
-                // Lade hardcodierte Reviews für dieses Buch
-                setReviews(bookData.reviews || []);
+        const loadBookData = async () => {
+            if (!id) return;
+            
+            setLoading(true);
+            try {
+                // Lade Buch von Google Books API
+                const bookData = await getBookById(id);
+                if (bookData) {
+                    setBook(bookData);
+                } else {
+                    Alert.alert("Fehler", "Buch konnte nicht geladen werden.");
+                    router.back();
+                }
+            } catch (error) {
+                console.error("Fehler beim Laden des Buches:", error);
+                Alert.alert("Fehler", "Buch konnte nicht geladen werden.");
+                router.back();
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         };
 
         const loadReviews = async () => {
+            if (!id) return;
+            
             try {
-                // Lade zusätzliche Reviews aus Firebase
+                // Lade nur Firebase Reviews - keine hardcodierten mehr
                 const firebaseReviews = await getBookReviews(id);
-                const bookData = BOOKS_DATA[id as keyof typeof BOOKS_DATA];
-                
-                // Kombiniere hardcodierte und Firebase Reviews
-                const allReviews = [
-                    ...(bookData?.reviews || []),
-                    ...firebaseReviews
-                ];
-                
-                setReviews(allReviews);
+                setReviews(firebaseReviews);
             } catch (error) {
                 console.error("Fehler beim Laden der Rezensionen:", error);
-                // Fallback: Nur hardcodierte Reviews anzeigen
-                const bookData = BOOKS_DATA[id as keyof typeof BOOKS_DATA];
-                setReviews(bookData?.reviews || []);
+                setReviews([]);
+            }
+        };
+
+        const loadUserShelves = async () => {
+            if (!user) return;
+            
+            setLoadingShelves(true);
+            try {
+                const shelves = await getUserShelves(user.uid);
+                setUserShelves(shelves);
+                
+                // Prüfe für jedes Regal, ob das Buch bereits darin ist
+                if (id) {
+                    const shelfStatus: Record<string, boolean> = {};
+                    for (const shelf of shelves) {
+                        shelfStatus[shelf.id] = await isBookInShelf(user.uid, shelf.id, id);
+                    }
+                    setBookInShelves(shelfStatus);
+                }
+            } catch (error) {
+                console.error("Fehler beim Laden der Benutzerregale:", error);
+                setUserShelves([]);
+            } finally {
+                setLoadingShelves(false);
             }
         };
 
@@ -466,7 +119,11 @@ export default function BookDetailScreen() {
             loadBookData();
             loadReviews();
         }
-    }, [id]);
+        
+        if (user) {
+            loadUserShelves();
+        }
+    }, [id, router, user]);
 
     const calculateAverageRating = () => {
         if (reviews.length === 0) return "0.0";
@@ -475,23 +132,14 @@ export default function BookDetailScreen() {
     };
 
     const refreshReviews = async () => {
+        if (!id) return;
+        
         try {
-            // Lade zusätzliche Reviews aus Firebase
+            // Lade nur Firebase Reviews
             const firebaseReviews = await getBookReviews(id);
-            const bookData = BOOKS_DATA[id as keyof typeof BOOKS_DATA];
-            
-            // Kombiniere hardcodierte und Firebase Reviews
-            const allReviews = [
-                ...(bookData?.reviews || []),
-                ...firebaseReviews
-            ];
-            
-            setReviews(allReviews);
+            setReviews(firebaseReviews);
         } catch (error) {
             console.error("Fehler beim Laden der Rezensionen:", error);
-            // Fallback: Nur hardcodierte Reviews anzeigen
-            const bookData = BOOKS_DATA[id as keyof typeof BOOKS_DATA];
-            setReviews(bookData?.reviews || []);
         }
     };
 
@@ -532,6 +180,88 @@ export default function BookDetailScreen() {
         }
     };
 
+    const handleAddToShelf = async (shelfId: string) => {
+        if (!user || !book || !id) return;
+
+        try {
+            // Prüfe, ob das Buch bereits in einem Standard-Regal ist
+            const isStandardShelf = DEFAULT_LIBRARY_SHELVES.some(shelf => shelf.id === shelfId);
+            let confirmationNeeded = false;
+            let currentStandardShelf = null;
+
+            if (isStandardShelf) {
+                // Finde heraus, ob das Buch bereits in einem anderen Standard-Regal ist
+                currentStandardShelf = await findBookInStandardShelves(user.uid, id);
+                if (currentStandardShelf && currentStandardShelf.shelfId !== shelfId) {
+                    confirmationNeeded = true;
+                }
+            }
+
+            // Zeige Bestätigung, wenn das Buch von einem Standard-Regal zu einem anderen verschoben wird
+            if (confirmationNeeded && currentStandardShelf) {
+                const targetShelf = userShelves.find(shelf => shelf.id === shelfId);
+                const moveConfirmation = await new Promise<boolean>((resolve) => {
+                    Alert.alert(
+                        "Buch verschieben",
+                        `"${book.title}" ist aktuell in "${currentStandardShelf.shelfTitle}". Möchtest du es zu "${targetShelf?.title}" verschieben?`,
+                        [
+                            { text: "Abbrechen", style: "cancel", onPress: () => resolve(false) },
+                            { text: "Verschieben", style: "default", onPress: () => resolve(true) }
+                        ]
+                    );
+                });
+
+                if (!moveConfirmation) {
+                    return;
+                }
+            }
+
+            const result = await addBookToShelf(user.uid, shelfId, book);
+            
+            // Trigger refresh für alle anderen Bildschirme
+            triggerRefresh();
+            
+            // Aktualisiere den Status für alle Regale (da sich die Situation geändert haben könnte)
+            if (id) {
+                const shelfStatus: Record<string, boolean> = {};
+                for (const shelf of userShelves) {
+                    shelfStatus[shelf.id] = await isBookInShelf(user.uid, shelf.id, id);
+                }
+                setBookInShelves(shelfStatus);
+            }
+            
+            const shelfName = userShelves.find(shelf => shelf.id === shelfId)?.title || "Regal";
+            
+            // Zeige entsprechende Erfolgs-Nachricht
+            if (result && result.movedFromShelf) {
+                Alert.alert(
+                    "✅ Erfolgreich verschoben!", 
+                    `"${book.title}" wurde von "${result.movedFromShelf}" zu "${shelfName}" verschoben!`,
+                    [{ text: "OK", onPress: () => {
+                        // Gehe zurück zur vorherigen Seite, damit useFocusEffect ausgelöst wird
+                        if (router.canGoBack()) {
+                            router.back();
+                        }
+                    }}]
+                );
+            } else {
+                Alert.alert(
+                    "✅ Erfolgreich hinzugefügt!", 
+                    `"${book.title}" wurde zu "${shelfName}" hinzugefügt!`,
+                    [{ text: "OK", onPress: () => {
+                        // Gehe zurück zur vorherigen Seite, damit useFocusEffect ausgelöst wird
+                        if (router.canGoBack()) {
+                            router.back();
+                        }
+                    }}]
+                );
+            }
+        } catch (error) {
+            console.error("Fehler beim Hinzufügen zum Regal:", error);
+            Alert.alert("❌ Fehler", (error as Error).message || "Buch konnte nicht zum Regal hinzugefügt werden.");
+        }
+    };
+
     const renderStars = (rating: number, size = 16, interactive = false, onPress?: (rating: number) => void) => {
         const stars = [];
         for (let i = 1; i <= 5; i++) {
@@ -556,20 +286,11 @@ export default function BookDetailScreen() {
         <View style={styles.reviewCard}>
             <View style={styles.reviewHeader}>
                 <View style={styles.userInfo}>
-                    <TouchableOpacity
-                        style={styles.avatar}
-                        onPress={() => router.push(`/profile/${item.userId}`)}
-                        activeOpacity={0.7}
-                    >
+                    <View style={styles.avatar}>
                         <Ionicons name="person" size={20} color="#999" />
-                    </TouchableOpacity>
+                    </View>
                     <View style={styles.userDetails}>
-                        <TouchableOpacity
-                            onPress={() => router.push(`/profile/${item.userId}`)}
-                            activeOpacity={0.7}
-                        >
-                            <Text style={styles.usernameClickable}>{item.username}</Text>
-                        </TouchableOpacity>
+                        <Text style={styles.username}>{item.username}</Text>
                         <View style={styles.ratingRow}>
                             {renderStars(item.rating, 14)}
                             <Text style={styles.reviewDate}>
@@ -596,17 +317,13 @@ export default function BookDetailScreen() {
     // UI State für Accordion und Dropdown (müssen immer aufgerufen werden)
     const [detailsExpanded, setDetailsExpanded] = useState(false);
     const [dropdownVisible, setDropdownVisible] = useState(false);
-    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-    const categories = [
-        { key: 'currently-reading', label: 'Lese ich gerade' },
-        { key: 'want-to-read', label: 'Will ich lesen' },
-        { key: 'read', label: 'Bereits gelesen' },
-    ];
+    const [selectedShelf, setSelectedShelf] = useState<string | null>(null);
 
     if (loading || !book) {
         return (
             <View style={styles.loadingContainer}>
-                <Text>Lädt...</Text>
+                <ActivityIndicator size="large" color="#666" />
+                <Text style={{marginTop: 16, fontSize: 16, color: "#666"}}>Lädt Buch...</Text>
             </View>
         );
     }
@@ -617,61 +334,211 @@ export default function BookDetailScreen() {
                 {/* Buchcover und Titel */}
                 <View style={[styles.bookSection, {alignItems: 'center', paddingBottom: 16}]}> 
                     <View style={styles.coverLarge}>
-                        <Text style={styles.coverEmoji}>{book.cover}</Text>
+                        {book.imageLinks?.large || book.imageLinks?.medium || book.imageLinks?.small || book.imageLinks?.thumbnail ? (
+                            <Image 
+                                source={{ uri: book.imageLinks.large || book.imageLinks.medium || book.imageLinks.small || book.imageLinks.thumbnail }}
+                                style={styles.bookCoverImageLarge}
+                                resizeMode="cover"
+                            />
+                        ) : (
+                            <Text style={styles.coverEmoji}>{book.cover}</Text>
+                        )}
                     </View>
                     <Text style={styles.bookTitleCentered}>{book.title}</Text>
                     <View style={styles.authorsContainer}>
-                        {book.authors.map((author, index) => (
+                        {book.authors.map((author: string, index: number) => (
                             <React.Fragment key={author}>
-                                <TouchableOpacity
-                                    activeOpacity={0.7}
-                                >
-                                    <Text style={styles.bookAuthorClickable}>{author}</Text>
-                                </TouchableOpacity>
+                                <Text style={styles.bookAuthorCentered}>{author}</Text>
                                 {index < book.authors.length - 1 && (
                                     <Text style={styles.authorSeparator}>, </Text>
                                 )}
                             </React.Fragment>
                         ))}
                     </View>
-                    <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 8}}>
-                        {renderStars(parseFloat(calculateAverageRating()), 18)}
-                        <Text style={styles.averageRating}>
-                            {calculateAverageRating()} ({reviews.length} Bewertungen)
-                        </Text>
+                    
+                    {/* Google Books Bewertung & Firebase Bewertungen */}
+                    <View style={{alignItems: 'center', marginTop: 12, gap: 4}}>
+                        {book.rating && book.ratingsCount && (
+                            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                                {renderStars(book.rating, 18)}
+                                <Text style={styles.googleRating}>
+                                    {book.rating}/5 ({book.ratingsCount} Google Books Bewertungen)
+                                </Text>
+                            </View>
+                        )}
+                        
+                        {reviews.length > 0 && (
+                            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+                                {renderStars(parseFloat(calculateAverageRating()), 16)}
+                                <Text style={styles.averageRating}>
+                                    {calculateAverageRating()}/5 ({reviews.length} Community Bewertungen)
+                                </Text>
+                            </View>
+                        )}
+                        
+                        {!book.rating && reviews.length === 0 && (
+                            <Text style={styles.noRating}>Noch keine Bewertungen verfügbar</Text>
+                        )}
                     </View>
                 </View>
 
-                {/* Kategorie Dropdown - selbsterklärend */}
+                {/* Regal-Dropdown */}
                 <View style={{paddingHorizontal: 24, marginBottom: 12}}>
-                    <Text style={styles.dropdownLabel}>Zu welcher Kategorie möchtest du dieses Buch in deiner Bibliothek hinzufügen?</Text>
+                    <Text style={styles.dropdownLabel}>Zu welchem Regal möchtest du dieses Buch hinzufügen?</Text>
                     <TouchableOpacity
                         style={styles.dropdownButton}
                         onPress={() => setDropdownVisible((v) => !v)}
                         activeOpacity={0.7}
                     >
-                        <Ionicons name="library-outline" size={18} color="#007AFF" style={{ marginRight: 6 }} />
-                        <Text style={styles.dropdownButtonText}>
-                            {selectedCategory
-                                ? categories.find((c) => c.key === selectedCategory)?.label
-                                : 'Kategorie auswählen'}
-                        </Text>
-                        <Ionicons name={dropdownVisible ? "chevron-up" : "chevron-down"} size={18} color="#007AFF" style={{ marginLeft: 6 }} />
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <Ionicons name="library-outline" size={18} color="#007AFF" />
+                            <Text style={styles.dropdownButtonText}>
+                                {selectedShelf
+                                    ? userShelves.find((shelf) => shelf.id === selectedShelf)?.title || "Regal auswählen"
+                                    : 'Regal auswählen'}
+                            </Text>
+                        </View>
+                        <Ionicons name={dropdownVisible ? "chevron-up" : "chevron-down"} size={18} color="#007AFF" />
                     </TouchableOpacity>
                     {dropdownVisible && (
                         <View style={styles.dropdownMenu}>
-                            {categories.map((cat) => (
-                                <TouchableOpacity
-                                    key={cat.key}
-                                    style={styles.dropdownItem}
-                                    onPress={() => {
-                                        setSelectedCategory(cat.key);
-                                        setDropdownVisible(false);
-                                    }}
-                                >
-                                    <Text style={styles.dropdownItemText}>{cat.label}</Text>
-                                </TouchableOpacity>
-                            ))}
+                            {loadingShelves ? (
+                                <View style={styles.dropdownItem}>
+                                    <View style={styles.dropdownItemContent}>
+                                        <ActivityIndicator size="small" color="#666" />
+                                        <Text style={styles.dropdownItemText}>Lade Regale...</Text>
+                                    </View>
+                                </View>
+                            ) : userShelves.length === 0 ? (
+                                <View style={styles.dropdownItem}>
+                                    <View style={styles.dropdownItemContent}>
+                                        <Ionicons name="information-circle-outline" size={20} color="#999" />
+                                        <Text style={styles.dropdownItemText}>Keine Regale verfügbar</Text>
+                                    </View>
+                                </View>
+                            ) : (
+                                <>
+                                    {/* Standard-Regale */}
+                                    {(() => {
+                                        const defaultShelves = userShelves.filter(shelf => 
+                                            DEFAULT_LIBRARY_SHELVES.some(defaultShelf => defaultShelf.id === shelf.id)
+                                        );
+                                        const customShelves = userShelves.filter(shelf => 
+                                            !DEFAULT_LIBRARY_SHELVES.some(defaultShelf => defaultShelf.id === shelf.id)
+                                        );
+
+                                        return (
+                                            <>
+                                                {defaultShelves.length > 0 && (
+                                                    <View style={customShelves.length > 0 ? styles.dropdownSection : null}>
+                                                        {customShelves.length > 0 && (
+                                                            <Text style={styles.dropdownSectionTitle}>Standard-Regale</Text>
+                                                        )}
+                                                        {defaultShelves.map((shelf) => {
+                                                            const isInThisShelf = bookInShelves[shelf.id];
+                                                            const hasBookInAnyStandardShelf = DEFAULT_LIBRARY_SHELVES.some(
+                                                                s => s.id !== shelf.id && bookInShelves[s.id]
+                                                            );
+                                                            
+                                                            return (
+                                                                <TouchableOpacity
+                                                                    key={shelf.id}
+                                                                    style={[
+                                                                        styles.dropdownItem,
+                                                                        isInThisShelf && styles.dropdownItemSelected
+                                                                    ]}
+                                                                    onPress={() => {
+                                                                        if (!isInThisShelf) {
+                                                                            handleAddToShelf(shelf.id);
+                                                                            setSelectedShelf(shelf.id);
+                                                                        }
+                                                                        setDropdownVisible(false);
+                                                                    }}
+                                                                >
+                                                                    <View style={styles.dropdownItemContent}>
+                                                                        <Ionicons 
+                                                                            name={shelf.icon as any} 
+                                                                            size={20} 
+                                                                            color={isInThisShelf ? "#4CAF50" : shelf.color} 
+                                                                        />
+                                                                        <Text style={[
+                                                                            styles.dropdownItemText,
+                                                                            isInThisShelf && styles.dropdownItemTextSelected
+                                                                        ]}>
+                                                                            {shelf.title}
+                                                                        </Text>
+                                                                        {isInThisShelf && (
+                                                                            <Ionicons 
+                                                                                name="checkmark-circle" 
+                                                                                size={16} 
+                                                                                color="#4CAF50" 
+                                                                            />
+                                                                        )}
+                                                                        {!isInThisShelf && hasBookInAnyStandardShelf && (
+                                                                            <Ionicons 
+                                                                                name="arrow-forward" 
+                                                                                size={14} 
+                                                                                color="#666" 
+                                                                            />
+                                                                        )}
+                                                                    </View>
+                                                                </TouchableOpacity>
+                                                            );
+                                                        })}
+                                                    </View>
+                                                )}
+                                                
+                                                {/* Benutzerdefinierte Regale */}
+                                                {customShelves.length > 0 && (
+                                                    <View>
+                                                        {defaultShelves.length > 0 && (
+                                                            <Text style={styles.dropdownSectionTitle}>Meine Regale</Text>
+                                                        )}
+                                                        {customShelves.map((shelf) => (
+                                                            <TouchableOpacity
+                                                                key={shelf.id}
+                                                                style={[
+                                                                    styles.dropdownItem,
+                                                                    bookInShelves[shelf.id] && styles.dropdownItemDisabled
+                                                                ]}
+                                                                onPress={() => {
+                                                                    if (!bookInShelves[shelf.id]) {
+                                                                        handleAddToShelf(shelf.id);
+                                                                        setSelectedShelf(shelf.id);
+                                                                    }
+                                                                    setDropdownVisible(false);
+                                                                }}
+                                                                disabled={bookInShelves[shelf.id]}
+                                                            >
+                                                                <View style={styles.dropdownItemContent}>
+                                                                    <Ionicons 
+                                                                        name={shelf.icon as any} 
+                                                                        size={20} 
+                                                                        color={bookInShelves[shelf.id] ? "#ccc" : shelf.color} 
+                                                                    />
+                                                                    <Text style={[
+                                                                        styles.dropdownItemText,
+                                                                        bookInShelves[shelf.id] && styles.dropdownItemTextDisabled
+                                                                    ]}>
+                                                                        {shelf.title}
+                                                                    </Text>
+                                                                    {bookInShelves[shelf.id] && (
+                                                                        <Ionicons 
+                                                                            name="checkmark-circle" 
+                                                                            size={16} 
+                                                                            color="#4CAF50" 
+                                                                        />
+                                                                    )}
+                                                                </View>
+                                                            </TouchableOpacity>
+                                                        ))}
+                                                    </View>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </>
+                            )}
                         </View>
                     )}
                 </View>
@@ -689,20 +556,68 @@ export default function BookDetailScreen() {
                     </TouchableOpacity>
                     {detailsExpanded && (
                         <View style={styles.accordionContentSimple}>
-                            <View style={styles.metaRow}><Text style={styles.metaLabel}>Erscheinungsjahr</Text><Text style={styles.metaValue}>{book.publishedDate}</Text></View>
-                            <View style={styles.metaRow}><Text style={styles.metaLabel}>Seiten</Text><Text style={styles.metaValue}>{book.pageCount}</Text></View>
-                            <View style={styles.metaRow}><Text style={styles.metaLabel}>Verlag</Text><Text style={styles.metaValue}>{book.publisher}</Text></View>
-                            <View style={styles.metaRow}><Text style={styles.metaLabel}>ISBN</Text><Text style={styles.metaValue}>{book.isbn}</Text></View>
-                            <View style={styles.metaRow}><Text style={styles.metaLabel}>Genres</Text><Text style={styles.metaValue}>{book.categories.join(", ")}</Text></View>
-                            <View style={styles.metaRow}><Text style={styles.metaLabel}>Sprache</Text><Text style={styles.metaValue}>{book.language}</Text></View>
+                            {book.publishedDate && (
+                                <View style={styles.metaRow}>
+                                    <Text style={styles.metaLabel}>Erscheinungsjahr</Text>
+                                    <Text style={styles.metaValue}>{new Date(book.publishedDate).getFullYear()}</Text>
+                                </View>
+                            )}
+                            {book.pageCount && (
+                                <View style={styles.metaRow}>
+                                    <Text style={styles.metaLabel}>Seiten</Text>
+                                    <Text style={styles.metaValue}>{book.pageCount}</Text>
+                                </View>
+                            )}
+                            {book.publisher && (
+                                <View style={styles.metaRow}>
+                                    <Text style={styles.metaLabel}>Verlag</Text>
+                                    <Text style={styles.metaValue}>{book.publisher}</Text>
+                                </View>
+                            )}
+                            {book.isbn && (
+                                <View style={styles.metaRow}>
+                                    <Text style={styles.metaLabel}>ISBN</Text>
+                                    <Text style={styles.metaValue}>{book.isbn}</Text>
+                                </View>
+                            )}
+                            {book.categories && book.categories.length > 0 && (
+                                <View style={styles.metaRow}>
+                                    <Text style={styles.metaLabel}>Kategorien</Text>
+                                    <Text style={styles.metaValue}>{book.categories.join(", ")}</Text>
+                                </View>
+                            )}
+                            {book.language && (
+                                <View style={styles.metaRow}>
+                                    <Text style={styles.metaLabel}>Sprache</Text>
+                                    <Text style={styles.metaValue}>
+                                        {book.language === 'de' ? 'Deutsch' : 
+                                         book.language === 'en' ? 'Englisch' : 
+                                         book.language === 'es' ? 'Spanisch' : 
+                                         book.language === 'fr' ? 'Französisch' : 
+                                         book.language === 'it' ? 'Italienisch' : 
+                                         book.language.toUpperCase()}
+                                    </Text>
+                                </View>
+                            )}
+                            {book.genre && (
+                                <View style={styles.metaRow}>
+                                    <Text style={styles.metaLabel}>Hauptgenre</Text>
+                                    <Text style={styles.metaValue}>{book.genre}</Text>
+                                </View>
+                            )}
                         </View>
                     )}
                 </View>
 
                 {/* Buchbeschreibung */}
-                <View style={{paddingHorizontal: 24, marginBottom: 24}}>
-                    <Text style={styles.description}>{book.description}</Text>
-                </View>
+                {book.description && (
+                    <View style={{paddingHorizontal: 24, marginBottom: 24}}>
+                        <Text style={styles.sectionTitle}>Beschreibung</Text>
+                        <Text style={styles.description}>
+                            {book.description.replace(/<[^>]*>/g, '').trim()}
+                        </Text>
+                    </View>
+                )}
 
                 {/* Rezensionen */}
                 <View style={styles.reviewsSection}>
@@ -827,10 +742,11 @@ const styles = StyleSheet.create({
   dropdownButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: '#e0e0e0',
     borderRadius: 8,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     backgroundColor: '#f8f8f8',
   },
@@ -838,6 +754,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#007AFF',
     fontWeight: '500',
+    flex: 1,
+    marginLeft: 6,
   },
   dropdownMenu: {
     backgroundColor: '#fff',
@@ -859,6 +777,33 @@ const styles = StyleSheet.create({
   dropdownItemText: {
     fontSize: 15,
     color: '#333',
+  },
+  dropdownItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  dropdownItemDisabled: {
+    backgroundColor: '#f5f5f5',
+    opacity: 0.6,
+  },
+  dropdownItemTextDisabled: {
+    color: '#999',
+  },
+  dropdownSection: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  dropdownSectionTitle: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '600',
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    backgroundColor: '#fafafa',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   // Accordion Styles (Simple)
   accordionHeaderSimple: {
@@ -1147,5 +1092,33 @@ const styles = StyleSheet.create({
         fontSize: 15,
         lineHeight: 20,
         color: "#333",
+    },
+    bookCoverImageLarge: {
+        width: "100%",
+        height: "100%",
+        borderRadius: 12,
+    },
+    googleRating: {
+        fontSize: 14,
+        color: "#007AFF",
+        fontWeight: "500",
+    },
+    noRating: {
+        fontSize: 14,
+        color: "#999",
+        fontStyle: "italic",
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: "600",
+        color: "#000",
+        marginBottom: 12,
+    },
+    dropdownItemSelected: {
+        backgroundColor: "#f0f8ff",
+    },
+    dropdownItemTextSelected: {
+        color: "#4CAF50",
+        fontWeight: "600",
     },
 });

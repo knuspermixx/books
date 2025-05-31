@@ -39,6 +39,13 @@ function isProtectedShelf(shelfId) {
 }
 
 /**
+ * Prüft ob ein Regal ein Standard-Regal ist (für exklusive Logik)
+ */
+function isStandardShelf(shelfId) {
+  return PROTECTED_SHELF_IDS.includes(shelfId);
+}
+
+/**
  * Zufälligen Benutzernamen generieren
  */
 function generateRandomUsername() {
@@ -455,5 +462,182 @@ export async function deleteUserShelf(userId, shelfId) {
   } catch (error) {
     console.error("Fehler beim Löschen des Regals:", error);
     throw error;
+  }
+}
+
+/**
+ * Buch zu einem Benutzerregal hinzufügen
+ * Standard-Regale sind exklusiv - ein Buch kann nur in einem Standard-Regal sein
+ * Benutzerdefinierte Regale können Bücher parallel enthalten
+ */
+export async function addBookToShelf(userId, shelfId, bookData) {
+  try {
+    const userDocRef = doc(db, "users", userId);
+    const userDocSnap = await getDoc(userDocRef);
+    
+    if (userDocSnap.exists()) {
+      const userData = userDocSnap.data();
+      const shelfBooks = userData.shelfBooks || {};
+      
+      // Initialisiere Regal-Array falls es nicht existiert
+      if (!shelfBooks[shelfId]) {
+        shelfBooks[shelfId] = [];
+      }
+      
+      // Prüfe, ob das Buch bereits im Ziel-Regal ist
+      const bookExists = shelfBooks[shelfId].some(book => book.id === bookData.id);
+      if (bookExists) {
+        throw new Error("Dieses Buch ist bereits in diesem Regal vorhanden.");
+      }
+
+      let movedFromShelf = null;
+      
+      // Wenn das Ziel-Regal ein Standard-Regal ist, entferne das Buch aus anderen Standard-Regalen
+      if (isStandardShelf(shelfId)) {
+        for (const [currentShelfId, books] of Object.entries(shelfBooks)) {
+          if (currentShelfId !== shelfId && isStandardShelf(currentShelfId)) {
+            const bookIndex = books.findIndex(book => book.id === bookData.id);
+            if (bookIndex !== -1) {
+              // Merke dir, aus welchem Regal das Buch verschoben wird
+              const currentShelfData = userData.customShelves?.find(s => s.id === currentShelfId) || 
+                                     DEFAULT_LIBRARY_SHELVES.find(s => s.id === currentShelfId);
+              movedFromShelf = currentShelfData?.title || currentShelfId;
+              
+              // Entferne das Buch aus dem aktuellen Standard-Regal
+              books.splice(bookIndex, 1);
+              break;
+            }
+          }
+        }
+      }
+      
+      // Füge Buch zum Ziel-Regal hinzu
+      shelfBooks[shelfId].push({
+        id: bookData.id,
+        title: bookData.title,
+        authors: bookData.authors || [],
+        imageLinks: bookData.imageLinks || {},
+        addedAt: new Date().toISOString()
+      });
+      
+      await updateDoc(userDocRef, {
+        shelfBooks: shelfBooks,
+        updatedAt: new Date().toISOString(),
+      });
+      
+      return {
+        success: true,
+        movedFromShelf: movedFromShelf
+      };
+    }
+  } catch (error) {
+    console.error("Fehler beim Hinzufügen des Buches zum Regal:", error);
+    throw error;
+  }
+}
+
+/**
+ * Buch aus einem Benutzerregal entfernen
+ */
+export async function removeBookFromShelf(userId, shelfId, bookId) {
+  try {
+    const userDocRef = doc(db, "users", userId);
+    const userDocSnap = await getDoc(userDocRef);
+    
+    if (userDocSnap.exists()) {
+      const userData = userDocSnap.data();
+      const shelfBooks = userData.shelfBooks || {};
+      
+      if (shelfBooks[shelfId]) {
+        shelfBooks[shelfId] = shelfBooks[shelfId].filter(book => book.id !== bookId);
+        
+        await updateDoc(userDocRef, {
+          shelfBooks: shelfBooks,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      
+      return true;
+    }
+  } catch (error) {
+    console.error("Fehler beim Entfernen des Buches aus dem Regal:", error);
+    throw error;
+  }
+}
+
+/**
+ * Alle Bücher eines Benutzerregals abrufen
+ */
+export async function getShelfBooks(userId, shelfId) {
+  try {
+    const userDocRef = doc(db, "users", userId);
+    const userDocSnap = await getDoc(userDocRef);
+    
+    if (userDocSnap.exists()) {
+      const userData = userDocSnap.data();
+      const shelfBooks = userData.shelfBooks || {};
+      return shelfBooks[shelfId] || [];
+    }
+    
+    return [];
+  } catch (error) {
+    console.error("Fehler beim Abrufen der Regal-Bücher:", error);
+    throw error;
+  }
+}
+
+/**
+ * Prüfen, ob ein Buch bereits in einem bestimmten Regal ist
+ */
+export async function isBookInShelf(userId, shelfId, bookId) {
+  try {
+    const userDocRef = doc(db, "users", userId);
+    const userDocSnap = await getDoc(userDocRef);
+    
+    if (userDocSnap.exists()) {
+      const userData = userDocSnap.data();
+      const shelfBooks = userData.shelfBooks || {};
+      
+      if (shelfBooks[shelfId]) {
+        return shelfBooks[shelfId].some(book => book.id === bookId);
+      }
+    }
+    
+    return false;
+  } catch (error) {
+    console.error("Fehler beim Prüfen der Buchexistenz im Regal:", error);
+    return false;
+  }
+}
+
+/**
+ * Findet das Standard-Regal, in dem sich ein Buch aktuell befindet
+ * Gibt null zurück, wenn das Buch in keinem Standard-Regal ist
+ */
+export async function findBookInStandardShelves(userId, bookId) {
+  try {
+    const userDocRef = doc(db, "users", userId);
+    const userDocSnap = await getDoc(userDocRef);
+    
+    if (userDocSnap.exists()) {
+      const userData = userDocSnap.data();
+      const shelfBooks = userData.shelfBooks || {};
+      
+      // Durchsuche nur Standard-Regale
+      for (const standardShelf of DEFAULT_LIBRARY_SHELVES) {
+        const books = shelfBooks[standardShelf.id] || [];
+        if (books.some(book => book.id === bookId)) {
+          return {
+            shelfId: standardShelf.id,
+            shelfTitle: standardShelf.title
+          };
+        }
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("Fehler beim Suchen des Buches in Standard-Regalen:", error);
+    return null;
   }
 }

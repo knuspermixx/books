@@ -1,6 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Alert, FlatList, Image, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { getShelfBooks } from "../../config/firestoreService";
+import { useAuth } from "../contexts/AuthContext";
 
 const CATEGORY_CONFIG = {
   completed: {
@@ -23,58 +26,51 @@ const CATEGORY_CONFIG = {
   },
 };
 
-// Mock data - in a real app, this would come from your database  
-const BOOK_TITLES = [
-  'Der Herr der Ringe',
-  'Harry Potter und der Stein der Weisen', 
-  '1984',
-  'Der Alchemist',
-  'Stolz und Vorurteil',
-  'Der Kleine Prinz',
-  'Die Verwandlung',
-  'Das Parfum',
-  'Der Steppenwolf'
-];
-
-const BOOK_AUTHORS = [
-  'J.R.R. Tolkien',
-  'J.K. Rowling',
-  'George Orwell', 
-  'Paulo Coelho',
-  'Jane Austen',
-  'Antoine de Saint-Exupéry',
-  'Franz Kafka',
-  'Patrick Süskind',
-  'Hermann Hesse'
-];
-
-const MOCK_BOOKS = Array.from({ length: 24 }, (_, index) => {
-  const bookIndex = index % 9;
-  return {
-    id: String(bookIndex + 1), // Verwende die echten Buch-IDs 1-9 (wiederholt)
-    title: BOOK_TITLES[bookIndex],
-    author: BOOK_AUTHORS[bookIndex],
-    cover: null,
+interface Book {
+  id: string;
+  title: string;
+  authors: string[];
+  imageLinks?: {
+    thumbnail?: string;
+    smallThumbnail?: string;
+    small?: string;
+    medium?: string;
+    large?: string;
   };
-});
+  addedAt: string;
+}
 
-const BookCover = ({ book }: { book: typeof MOCK_BOOKS[0] }) => {
+const BookCover = ({ book }: { book: Book }) => {
   const router = useRouter();
   
   const handlePress = () => {
     router.push(`/book/${book.id}` as any);
   };
 
+  // Wähle die beste verfügbare Bildquelle
+  const imageSource = book.imageLinks?.thumbnail || 
+                      book.imageLinks?.small || 
+                      book.imageLinks?.medium || 
+                      book.imageLinks?.smallThumbnail;
+
   return (
     <TouchableOpacity style={styles.bookItem} onPress={handlePress}>
       <View style={styles.bookCover}>
-        <Ionicons name="book" size={20} color="#ccc" />
+        {imageSource ? (
+          <Image 
+            source={{ uri: imageSource }}
+            style={styles.bookCoverImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <Ionicons name="book" size={20} color="#ccc" />
+        )}
       </View>
       <Text style={styles.bookTitle} numberOfLines={2}>
         {book.title}
       </Text>
       <Text style={styles.bookAuthor} numberOfLines={1}>
-        {book.author}
+        {book.authors.join(', ')}
       </Text>
     </TouchableOpacity>
   );
@@ -82,51 +78,150 @@ const BookCover = ({ book }: { book: typeof MOCK_BOOKS[0] }) => {
 
 export default function LibraryCategoryScreen() {
   const { category } = useLocalSearchParams<{ category: string }>();
+  const { user, refreshKey } = useAuth();
+  const [books, setBooks] = useState<Book[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   
   const config = CATEGORY_CONFIG[category as keyof typeof CATEGORY_CONFIG];
+  
+  const loadBooks = useCallback(async () => {
+    if (!user || !category) return;
+    
+    try {
+      const shelfBooks = await getShelfBooks(user.uid, category);
+      setBooks(shelfBooks);
+    } catch (error) {
+      console.error("Fehler beim Laden der Bücher:", error);
+      Alert.alert("Fehler", "Bücher konnten nicht geladen werden.");
+      setBooks([]);
+    }
+  }, [user, category]);
+
+  // Bücher beim ersten Laden
+  useEffect(() => {
+    const initialLoad = async () => {
+      setLoading(true);
+      await loadBooks();
+      setLoading(false);
+    };
+    
+    initialLoad();
+  }, [loadBooks]);
+
+  // Bücher neu laden, wenn sich der refreshKey ändert (z.B. nach einer Buchverschiebung)
+  useEffect(() => {
+    if (refreshKey > 0) {
+      loadBooks();
+    }
+  }, [refreshKey, loadBooks]);
+
+  // Bücher neu laden, wenn die Seite fokussiert wird (z.B. nach Navigation zurück)
+  useFocusEffect(
+    useCallback(() => {
+      // Immer neu laden, wenn die Seite fokussiert wird
+      loadBooks();
+    }, [loadBooks])
+  );
+
+  // Pull-to-Refresh Funktion
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadBooks();
+    setRefreshing(false);
+  }, [loadBooks]);
   
   if (!config) {
     return (
       <View style={styles.container}>
+        <Stack.Screen
+          options={{
+            title: "Kategorie nicht gefunden",
+            headerBackTitle: "Zurück",
+          }}
+        />
         <Text>Kategorie nicht gefunden</Text>
       </View>
     );
   }
 
-  const renderBook = ({ item }: { item: typeof MOCK_BOOKS[0] }) => (
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Stack.Screen
+          options={{
+            title: config.title,
+            headerBackTitle: "Zurück",
+          }}
+        />
+        <ActivityIndicator size="large" color={config.color} />
+        <Text style={styles.loadingText}>Bücher werden geladen...</Text>
+      </View>
+    );
+  }
+
+  const renderBook = ({ item }: { item: Book }) => (
     <BookCover book={item} />
   );
 
+  const renderEmptyList = () => (
+    <View style={styles.emptyContainer}>
+      <Ionicons name={config.icon} size={64} color="#ddd" />
+      <Text style={styles.emptyTitle}>Noch keine Bücher</Text>
+      <Text style={styles.emptyDescription}>
+        {category === 'completed' && 'Du hast noch keine Bücher als gelesen markiert.'}
+        {category === 'reading' && 'Du liest gerade keine Bücher.'}
+        {category === 'wishlist' && 'Deine Leseliste ist noch leer.'}
+      </Text>
+      <Text style={styles.emptyHint}>
+        Durchsuche Bücher und füge sie zu diesem Regal hinzu!
+      </Text>
+    </View>
+  );
+
   return (
-    <>
+    <View style={styles.container}>
       <Stack.Screen
         options={{
           title: config.title,
+          headerBackTitle: "Zurück",
         }}
       />
-      <View style={styles.container}>        
-        <FlatList
-          data={MOCK_BOOKS}
-          renderItem={renderBook}
-          keyExtractor={(item) => item.id}
-          numColumns={3}
-          contentContainerStyle={styles.booksGrid}
-          columnWrapperStyle={styles.bookRow}
-          showsVerticalScrollIndicator={false}
-          ListHeaderComponent={
-            <View style={styles.header}>
-              <View style={styles.headerInfo}>
-                <View style={styles.titleRow}>
-                  <Ionicons name={config.icon} size={20} color={config.color} />
-                  <Text style={styles.categoryDescription}>{config.description}</Text>
-                </View>
-                <Text style={styles.bookCount}>{MOCK_BOOKS.length} Bücher</Text>
-              </View>
-            </View>
-          }
-        />
+      
+      <View style={styles.header}>
+        <View style={styles.headerInfo}>
+          <View style={styles.titleRow}>
+            <Ionicons name={config.icon} size={24} color={config.color} />
+            <Text style={styles.categoryDescription}>
+              {config.description}
+            </Text>
+          </View>
+          <Text style={styles.bookCount}>
+            {books.length} {books.length === 1 ? 'Buch' : 'Bücher'}
+          </Text>
+        </View>
       </View>
-    </>
+
+      <FlatList
+        data={books}
+        renderItem={renderBook}
+        keyExtractor={(item) => item.id}
+        numColumns={3}
+        contentContainerStyle={books.length === 0 ? styles.emptyList : styles.booksGrid}
+        columnWrapperStyle={books.length > 0 ? styles.bookRow : undefined}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={renderEmptyList}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#666"
+            title="Aktualisieren..."
+            titleColor="#666"
+          />
+        }
+      />
+    </View>
   );
 }
 
@@ -134,6 +229,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+    fontFamily: 'System',
   },
   header: {
     paddingHorizontal: 16,
@@ -163,6 +268,9 @@ const styles = StyleSheet.create({
   booksGrid: {
     padding: 16,
   },
+  emptyList: {
+    flexGrow: 1,
+  },
   bookRow: {
     justifyContent: 'space-between',
     marginBottom: 20,
@@ -182,6 +290,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
+    overflow: 'hidden',
+  },
+  bookCoverImage: {
+    width: '100%',
+    height: '100%',
   },
   bookTitle: {
     fontSize: 12,
@@ -195,6 +308,35 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#666',
     textAlign: 'center',
+    fontFamily: 'System',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 64,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#333',
+    marginTop: 16,
+    marginBottom: 8,
+    fontFamily: 'System',
+  },
+  emptyDescription: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 8,
+    fontFamily: 'System',
+  },
+  emptyHint: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    fontStyle: 'italic',
     fontFamily: 'System',
   },
 });

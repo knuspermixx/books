@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +13,7 @@ import {
 import {
   createUserShelf,
   deleteUserShelf,
+  getShelfBooks,
   getUserShelves,
   updateUserShelf,
 } from "../../config/firestoreService";
@@ -39,9 +41,9 @@ const SOCIAL_STATS = [
 ];
 
 const LIBRARY_SECTIONS = [
-  { id: "completed", title: "Durchgelesen", icon: "checkmark-circle-outline", color: COLORS.success, count: 24 },
-  { id: "reading", title: "Aktuell dabei", icon: "book-outline", color: COLORS.info, count: 3 },
-  { id: "wishlist", title: "Leseliste", icon: "bookmark-outline", color: COLORS.warning, count: 12 },
+  { id: "completed", title: "Durchgelesen", icon: "checkmark-circle-outline", color: COLORS.success },
+  { id: "reading", title: "Aktuell dabei", icon: "book-outline", color: COLORS.info },
+  { id: "wishlist", title: "Leseliste", icon: "bookmark-outline", color: COLORS.warning },
 ];
 
 const ACHIEVEMENTS = [
@@ -74,20 +76,49 @@ const StatItem = ({ number, label }: { number: string; label: string }) => (
   </View>
 );
 
-const BookCover = ({ onPress, bookId }: { onPress?: () => void; bookId?: string }) => {
+const BookCover = ({ onPress, bookId, book, loading }: { 
+  onPress?: () => void; 
+  bookId?: string; 
+  book?: any;
+  loading?: boolean;
+}) => {
   const router = useRouter();
   
   const handlePress = () => {
     if (onPress) {
       onPress();
+    } else if (book?.id) {
+      router.push(`/book/${book.id}` as any);
     } else if (bookId) {
       router.push(`/book/${bookId}` as any);
     }
   };
 
+  if (loading) {
+    return (
+      <View style={styles.bookCover}>
+        <Ionicons name="book" size={24} color={COLORS.border} />
+      </View>
+    );
+  }
+
+  // Wähle die beste verfügbare Bildquelle
+  const imageSource = book?.imageLinks?.thumbnail || 
+                      book?.imageLinks?.small || 
+                      book?.imageLinks?.medium || 
+                      book?.imageLinks?.smallThumbnail;
+
   return (
     <TouchableOpacity onPress={handlePress} style={styles.bookCover}>
-      <Ionicons name="book" size={24} color={COLORS.tertiary} />
+      {imageSource ? (
+        <Image 
+          source={{ uri: imageSource }}
+          style={styles.bookCoverImage}
+          resizeMode="cover"
+        />
+      ) : (
+        <Ionicons name="book" size={24} color={COLORS.tertiary} />
+      )}
     </TouchableOpacity>
   );
 };
@@ -132,11 +163,34 @@ const Achievements = () => (
 );
 
 const LibrarySection = ({ section, onEdit }: { section: any; onEdit: (section: any) => void }) => {
+  const { user, refreshKey } = useAuth();
   const router = useRouter();
+  const [books, setBooks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const handleShowAll = () => router.push(`/library/${section.id}`);
   
   // Standard-Regale können nicht bearbeitet werden
   const isStandardShelf = ["completed", "reading", "wishlist"].includes(section.id);
+
+  useEffect(() => {
+    const loadSectionBooks = async () => {
+      if (!user) return;
+      
+      setLoading(true);
+      try {
+        const shelfBooks = await getShelfBooks(user.uid, section.id);
+        setBooks(shelfBooks.slice(0, 8)); // Nur die ersten 8 Bücher anzeigen
+      } catch (error) {
+        console.error(`Fehler beim Laden der Bücher für ${section.id}:`, error);
+        setBooks([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSectionBooks();
+  }, [user, section.id, refreshKey]);
 
   return (
     <View style={styles.librarySection}>
@@ -144,7 +198,7 @@ const LibrarySection = ({ section, onEdit }: { section: any; onEdit: (section: a
         <View style={styles.sectionTitleRow}>
           <Ionicons name={section.icon as any} size={20} color={section.color} />
           <Text style={styles.sectionTitle}>{section.title}</Text>
-          <Text style={styles.count}>{section.count}</Text>
+          <Text style={styles.count}>{books.length}</Text>
         </View>
         <View style={styles.sectionActions}>
           {!isStandardShelf && (
@@ -159,18 +213,30 @@ const LibrarySection = ({ section, onEdit }: { section: any; onEdit: (section: a
         </View>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalBookList}>
-        {Array.from({ length: 8 }, (_, index) => {
-          // Mock-Buch-IDs für Demo-Zwecke
-          const bookId = String(index + 1);
-          return <BookCover key={index} bookId={bookId} />;
-        })}
+        {loading ? (
+          // Zeige Loading-Placeholder
+          Array.from({ length: 3 }, (_, index) => (
+            <BookCover key={`loading-${index}`} loading={true} />
+          ))
+        ) : books.length > 0 ? (
+          // Zeige echte Bücher
+          books.map((book, index) => (
+            <BookCover key={book.id || index} book={book} />
+          ))
+        ) : (
+          // Zeige Placeholder für leere Regale
+          <View style={styles.emptyShelfContainer}>
+            <Ionicons name={section.icon as any} size={32} color={COLORS.border} />
+            <Text style={styles.emptyShelfText}>Noch keine Bücher</Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
 };
 
 const Library = () => {
-  const { user } = useAuth();
+  const { user, refreshKey } = useAuth();
   const [shelves, setShelves] = useState(LIBRARY_SECTIONS);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingShelf, setEditingShelf] = useState<any>(null);
@@ -187,7 +253,7 @@ const Library = () => {
 
   useEffect(() => {
     loadUserShelves();
-  }, [loadUserShelves]);
+  }, [loadUserShelves, refreshKey]);
 
   const handleCreateShelf = () => {
     setEditingShelf(null);
@@ -285,39 +351,49 @@ const ActivityItem = ({ type, action, content, time, bookId, onPress }: {
 );
 
 const Activities = () => {
-  const router = useRouter();
-  const activities = [
-    {
-      type: 'completed' as const,
-      action: 'Als gelesen markiert',
-      content: 'Der Herr der Ringe',
-      time: 'vor 2 Stunden',
-      bookId: '1',
-      onPress: () => router.push('/book/1' as any),
-    },
-    {
-      type: 'rating' as const,
-      action: 'Mit 5 Sternen bewertet',
-      content: '1984',
-      time: 'gestern',
-      bookId: '3',
-      onPress: () => router.push('/book/3' as any),
-    },
-    {
-      type: 'wishlist' as const,
-      action: 'Zur Leseliste hinzugefügt',
-      content: 'Harry Potter und der Stein der Weisen',
-      time: 'vor 3 Tagen',
-      bookId: '2',
-      onPress: () => router.push('/book/2' as any),
-    },
-    {
-      type: 'follow' as const,
-      action: 'Folgt jetzt',
-      content: '@bookworm_sarah',
-      time: 'vor 1 Woche',
-    },
-  ];
+  const { user } = useAuth();
+  const [activities, setActivities] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadRecentActivities = async () => {
+      if (!user) return;
+      
+      setLoading(true);
+      try {
+        // Hier könnten wir echte Aktivitäten aus Firebase laden
+        // Für jetzt zeigen wir eine Nachricht, dass noch keine Aktivitäten vorhanden sind
+        setActivities([]);
+      } catch (error) {
+        console.error("Fehler beim Laden der Aktivitäten:", error);
+        setActivities([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadRecentActivities();
+  }, [user]);
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { paddingVertical: SPACING.xxl, alignItems: 'center' }]}>
+        <Text style={styles.emptyStateText}>Aktivitäten werden geladen...</Text>
+      </View>
+    );
+  }
+
+  if (activities.length === 0) {
+    return (
+      <View style={[styles.container, { paddingVertical: SPACING.xxl, alignItems: 'center' }]}>
+        <Ionicons name="time-outline" size={48} color={COLORS.border} />
+        <Text style={[styles.emptyStateText, { marginTop: SPACING.md, fontSize: 16 }]}>Noch keine Aktivitäten</Text>
+        <Text style={[styles.emptyStateText, { marginTop: SPACING.xs }]}>
+          Füge Bücher zu deinen Regalen hinzu, um deine Leseaktivitäten zu sehen
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -367,22 +443,42 @@ const Info = ({ userData }: { userData: any }) => (
           ))}
         </View>
       ) : (
-        <Text style={styles.emptyText}>Keine Genres ausgewählt</Text>
+        <Text style={styles.emptyStateText}>Keine Genres ausgewählt</Text>
       )}
     </InfoSection>
   </View>
 );
 
 export default function ProfileScreen() {
-  const { userData } = useAuth();
+  const { userData, user } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("info");
+  const [totalBooks, setTotalBooks] = useState(0);
 
   const handleEditPress = () => {
     router.push("/profile-edit");
   };
 
-  const totalBooks = LIBRARY_SECTIONS.reduce((sum, section) => sum + section.count, 0);
+  // Berechne die Gesamtanzahl der Bücher aus allen Regalen
+  useEffect(() => {
+    const calculateTotalBooks = async () => {
+      if (!user) return;
+      
+      try {
+        let total = 0;
+        for (const section of LIBRARY_SECTIONS) {
+          const books = await getShelfBooks(user.uid, section.id);
+          total += books.length;
+        }
+        setTotalBooks(total);
+      } catch (error) {
+        console.error("Fehler beim Berechnen der Gesamtbücher:", error);
+        setTotalBooks(0);
+      }
+    };
+
+    calculateTotalBooks();
+  }, [user]);
   
   const tabs = [
     { id: "info", label: "Info" },
@@ -510,7 +606,7 @@ const styles = StyleSheet.create({
   
   // Status and Text
   statusText: { fontSize: 14, color: COLORS.secondary, lineHeight: 20 },
-  emptyText: { fontSize: 12, color: "#ccc", fontStyle: "italic" },
+  emptyStateText: { fontSize: 12, color: "#ccc", fontStyle: "italic" },
   
   // Chips
   chipContainer: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
@@ -542,6 +638,25 @@ const styles = StyleSheet.create({
   bookCover: {
     width: 110, height: 160, backgroundColor: "transparent", borderWidth: 1,
     borderColor: COLORS.border, borderRadius: 6, justifyContent: "center", alignItems: "center",
+    overflow: 'hidden',
+  },
+  bookCoverImage: {
+    width: '100%',
+    height: '100%',
+  },
+  
+  // Empty shelf styles
+  emptyShelfContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.xxl,
+    paddingHorizontal: SPACING.xl,
+  },
+  emptyShelfText: {
+    fontSize: 12,
+    color: COLORS.tertiary,
+    marginTop: SPACING.sm,
+    textAlign: 'center',
   },
   
   // Activities
@@ -561,4 +676,12 @@ const styles = StyleSheet.create({
     borderRadius: 8, borderStyle: "dashed",
   },
   addShelfText: { fontSize: 14, color: COLORS.secondary, fontWeight: "500" },
+  
+  // Empty states
+  emptyText: {
+    fontSize: 14,
+    color: COLORS.tertiary,
+    textAlign: 'center',
+    fontFamily: 'System',
+  },
 });

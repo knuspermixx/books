@@ -1,95 +1,140 @@
 import { useRouter } from "expo-router";
-import React from "react";
-import { FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, FlatList, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View, Image } from "react-native";
+import { Book, getFantasyBooks, getRecommendedBooks, getTrendingBooks, getClassicBooks, getPhilosophyBooks, getMysteryBooks, getSciFiBooks, getRomanceBooks } from "../../services/googleBooksApi";
 
-// Bücherdaten - in einer echten App würden diese aus einer API oder Datenbank kommen
-const ALL_BOOKS = [
-    { id: "1", title: "Der Herr der Ringe", author: "J.R.R. Tolkien", cover: "📚", rating: 5, genre: "Fantasy" },
-    { id: "2", title: "Harry Potter", author: "J.K. Rowling", cover: "⚡", rating: 4, genre: "Fantasy" },
-    { id: "3", title: "1984", author: "George Orwell", cover: "👁", rating: 5, genre: "Dystopie" },
-    { id: "4", title: "Der Alchemist", author: "Paulo Coelho", cover: "✨", rating: 3, genre: "Philosophie" },
-    { id: "5", title: "Stolz und Vorurteil", author: "Jane Austen", cover: "💕", rating: 4, genre: "Klassiker" },
-    { id: "6", title: "Der Kleine Prinz", author: "Antoine de Saint-Exupéry", cover: "🌟", rating: 5, genre: "Philosophie" },
-    { id: "7", title: "Die Verwandlung", author: "Franz Kafka", cover: "🪲", rating: 4, genre: "Klassiker" },
-    { id: "8", title: "Das Parfum", author: "Patrick Süskind", cover: "🌹", rating: 4, genre: "Krimi" },
-    { id: "9", title: "Der Steppenwolf", author: "Hermann Hesse", cover: "🐺", rating: 3, genre: "Klassiker" },
-    { id: "10", title: "Faust", author: "Johann Wolfgang von Goethe", cover: "🎭", rating: 4, genre: "Klassiker" },
-    { id: "11", title: "Die Buddenbrooks", author: "Thomas Mann", cover: "🏛️", rating: 4, genre: "Klassiker" },
-    { id: "12", title: "Der Zauberberg", author: "Thomas Mann", cover: "🏔️", rating: 3, genre: "Klassiker" },
-    { id: "13", title: "Die unendliche Geschichte", author: "Michael Ende", cover: "🐉", rating: 5, genre: "Fantasy" },
-    { id: "14", title: "Der Name der Rose", author: "Umberto Eco", cover: "🌹", rating: 4, genre: "Krimi" },
-    { id: "15", title: "Brave New World", author: "Aldous Huxley", cover: "🧬", rating: 4, genre: "Dystopie" },
-    { id: "16", title: "Siddharta", author: "Hermann Hesse", cover: "🧘", rating: 4, genre: "Philosophie" },
-];
+// Fallback-Bücherdaten wurden entfernt - alle Kategorien laden jetzt echte Bücher von der API
 
-// Kategorien für die Slider
-const BOOK_CATEGORIES = {
-    trending: {
-        title: "📈 Trending diese Woche",
-        books: ALL_BOOKS.filter(book => [5, 4].includes(book.rating)).slice(0, 6)
-    },
-    recommended: {
-        title: "⭐ Empfohlene Bücher", 
-        books: ALL_BOOKS.filter(book => book.rating === 5)
-    },
-    fantasy: {
-        title: "🧙‍♂️ Fantasy Welten",
-        books: ALL_BOOKS.filter(book => book.genre === "Fantasy")
-    },
-    classics: {
-        title: "📖 Deutsche Klassiker",
-        books: ALL_BOOKS.filter(book => book.genre === "Klassiker").slice(0, 6)
-    },
-    philosophy: {
-        title: "💭 Philosophie & Weisheit",
-        books: ALL_BOOKS.filter(book => book.genre === "Philosophie")
-    },
-    mystery: {
-        title: "🔍 Krimis & Thriller",
-        books: ALL_BOOKS.filter(book => book.genre === "Krimi")
-    }
-};
+interface BookCategory {
+    title: string;
+    books: Book[];
+    loading: boolean;
+}
 
 export default function LibraryScreen() {
     const router = useRouter();
+    const [refreshing, setRefreshing] = useState(false);
+    const [bookCategories, setBookCategories] = useState<Record<string, BookCategory>>({
+        trending: { title: "📈 Trending diese Woche", books: [], loading: true },
+        recommended: { title: "⭐ Empfohlene Bücher", books: [], loading: true },
+        fantasy: { title: "🧙‍♂️ Fantasy Welten", books: [], loading: true },
+        classics: { title: "📖 Deutsche Klassiker", books: [], loading: true },
+        philosophy: { title: "💭 Philosophie & Weisheit", books: [], loading: true },
+        mystery: { title: "🔍 Krimis & Thriller", books: [], loading: true },
+        scifi: { title: "🚀 Science Fiction", books: [], loading: true },
+        romance: { title: "💕 Romance", books: [], loading: true }
+    });
 
-    const renderStars = (rating: number) => {
-        return Array.from({ length: 5 }, (_, i) => (
-            <Text key={i} style={styles.star}>
-                {i < rating ? "★" : "☆"}
-            </Text>
-        ));
-    };
+    // Bücher laden
+    const loadBooks = useCallback(async () => {
+        console.log('Loading books from Google Books API...');
+        try {
+            // Alle Kategorien parallel laden
+            const [
+                fantasyBooks,
+                trendingBooks,
+                recommendedBooks,
+                classicBooks,
+                philosophyBooks,
+                mysteryBooks,
+                scifiBooks,
+                romanceBooks
+            ] = await Promise.all([
+                getFantasyBooks(8),
+                getTrendingBooks(6),
+                getRecommendedBooks(8),
+                getClassicBooks(6),
+                getPhilosophyBooks(6),
+                getMysteryBooks(6),
+                getSciFiBooks(6),
+                getRomanceBooks(6)
+            ]);
+
+            setBookCategories(prev => ({
+                ...prev,
+                fantasy: { ...prev.fantasy, books: fantasyBooks, loading: false },
+                trending: { ...prev.trending, books: trendingBooks, loading: false },
+                recommended: { ...prev.recommended, books: recommendedBooks, loading: false },
+                classics: { ...prev.classics, books: classicBooks, loading: false },
+                philosophy: { ...prev.philosophy, books: philosophyBooks, loading: false },
+                mystery: { ...prev.mystery, books: mysteryBooks, loading: false },
+                scifi: { ...prev.scifi, books: scifiBooks, loading: false },
+                romance: { ...prev.romance, books: romanceBooks, loading: false }
+            }));
+        } catch (error) {
+            console.error('Fehler beim Laden der Bücher:', error);
+            // Bei Fehler loading auf false setzen
+            setBookCategories(prev => ({
+                ...prev,
+                fantasy: { ...prev.fantasy, loading: false },
+                trending: { ...prev.trending, loading: false },
+                recommended: { ...prev.recommended, loading: false },
+                classics: { ...prev.classics, loading: false },
+                philosophy: { ...prev.philosophy, loading: false },
+                mystery: { ...prev.mystery, loading: false },
+                scifi: { ...prev.scifi, loading: false },
+                romance: { ...prev.romance, loading: false }
+            }));
+        }
+    }, []);
+
+    useEffect(() => {
+        loadBooks();
+    }, [loadBooks]);
+
+    // Pull-to-refresh Handler
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        // Alle Kategorien zurücksetzen
+        setBookCategories(prev => Object.keys(prev).reduce((acc, key) => ({
+            ...acc,
+            [key]: { ...prev[key], loading: true }
+        }), {} as typeof prev));
+        
+        await loadBooks();
+        setRefreshing(false);
+    }, [loadBooks]);
 
     const handleBookPress = (bookId: string) => {
         router.push(`/book/${bookId}`);
     };
 
-    const renderBookItem = ({ item }: { item: typeof ALL_BOOKS[0] }) => (
+    const renderBookItem = ({ item }: { item: Book }) => (
         <TouchableOpacity 
             style={styles.bookSliderItem} 
             onPress={() => handleBookPress(item.id)}
             activeOpacity={0.7}
         >
             <View style={styles.bookCover}>
-                <Text style={styles.bookEmoji}>{item.cover}</Text>
+                {item.imageLinks?.thumbnail ? (
+                    <Image 
+                        source={{ uri: item.imageLinks.thumbnail }}
+                        style={styles.bookCoverImage}
+                        resizeMode="cover"
+                    />
+                ) : (
+                    <Text style={styles.bookEmoji}>{item.cover}</Text>
+                )}
             </View>
             {/* Nur das Cover anzeigen, keine weiteren Infos */}
         </TouchableOpacity>
     );
 
-    const renderBookCategory = (categoryKey: keyof typeof BOOK_CATEGORIES) => {
-        const category = BOOK_CATEGORIES[categoryKey];
+    const renderLoadingItem = () => (
+        <View style={styles.bookSliderItem}>
+            <View style={styles.bookCover}>
+                <ActivityIndicator size="small" color="#666" />
+            </View>
+        </View>
+    );
+
+    const renderBookCategory = (categoryKey: string) => {
+        const category = bookCategories[categoryKey];
+        
         const handleSeeAll = () => {
-            // Navigiere zum neuen Kategorie-Listen-Screen und übergebe Titel und Bücher als JSON
-            router.push({
-                pathname: "/library/category-list",
-                params: {
-                    title: category.title,
-                    books: JSON.stringify(category.books),
-                },
-            });
+            router.push(`/library/${categoryKey}` as any);
         };
+        
         return (
             <View key={categoryKey} style={styles.categorySection}>
                 <View style={styles.categoryHeader}>
@@ -99,9 +144,9 @@ export default function LibraryScreen() {
                     </TouchableOpacity>
                 </View>
                 <FlatList
-                    data={category.books}
-                    renderItem={renderBookItem}
-                    keyExtractor={(item) => `${categoryKey}-${item.id}`}
+                    data={category.loading ? Array(6).fill(null) : category.books}
+                    renderItem={category.loading ? renderLoadingItem : renderBookItem}
+                    keyExtractor={(item, index) => category.loading ? `loading-${categoryKey}-${index}` : `${categoryKey}-${item?.id || index}`}
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.sliderContainer}
@@ -122,8 +167,17 @@ export default function LibraryScreen() {
                 style={styles.scrollView}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollViewContent}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor="#666"
+                        title="Bücher aktualisieren..."
+                        titleColor="#666"
+                    />
+                }
             >
-                {(Object.keys(BOOK_CATEGORIES) as (keyof typeof BOOK_CATEGORIES)[]).map(renderBookCategory)}
+                {Object.keys(bookCategories).map(renderBookCategory)}
             </ScrollView>
         </View>
     );
@@ -238,5 +292,10 @@ const styles = StyleSheet.create({
     star: {
         fontSize: 12,
         color: "#FFD700",
+    },
+    bookCoverImage: {
+        width: "100%",
+        height: "100%",
+        borderRadius: 12,
     },
 });
