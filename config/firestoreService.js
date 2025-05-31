@@ -196,6 +196,7 @@ export async function createReview(bookId, reviewData) {
       bookId: String(bookId), // Stelle sicher, dass bookId als String gespeichert wird
       userId: reviewData.userId,
       username: reviewData.username,
+      profileImageUrl: reviewData.profileImageUrl || null, // Profilbild-URL speichern
       rating: reviewData.rating,
       text: reviewData.text || "",
       likes: [],
@@ -265,10 +266,6 @@ export async function getBookReviews(bookId) {
     
     console.log("📊 Anzahl gefundener Rezensionen:", querySnapshot.docs.length);
     
-    // Sammle alle UserIds um zusätzliche Benutzerinformationen zu laden
-    const userIds = new Set();
-    const reviewsData = [];
-    
     querySnapshot.forEach((doc) => {
       const reviewData = doc.data();
       console.log("📝 Gefundene Rezension:", {
@@ -276,42 +273,14 @@ export async function getBookReviews(bookId) {
         bookId: reviewData.bookId,
         userId: reviewData.userId,
         username: reviewData.username,
-        rating: reviewData.rating
+        rating: reviewData.rating,
+        profileImageUrl: reviewData.profileImageUrl // Direkt verwenden
       });
       
-      reviewsData.push({
+      reviews.push({
         id: doc.id,
         ...reviewData
       });
-      
-      userIds.add(reviewData.userId);
-    });
-    
-    // Lade zusätzliche Benutzerinformationen wenn nötig
-    const userCache = {};
-    for (const userId of userIds) {
-      try {
-        const userData = await getUserDocument(userId);
-        if (userData) {
-          userCache[userId] = {
-            username: userData.username,
-            profileImageUrl: userData.profileImageUrl
-          };
-        }
-      } catch (error) {
-        console.warn(`Konnte Benutzerdaten für ${userId} nicht laden:`, error);
-      }
-    }
-    
-    // Bereichere Reviews mit aktuellen Benutzerdaten
-    reviewsData.forEach((reviewData) => {
-      const cachedUser = userCache[reviewData.userId];
-      if (cachedUser) {
-        reviewData.username = cachedUser.username || reviewData.username;
-        reviewData.profileImageUrl = cachedUser.profileImageUrl;
-      }
-      
-      reviews.push(reviewData);
     });
     
     // Sortiere client-seitig nach createdAt (neueste zuerst)
@@ -846,66 +815,31 @@ export async function hasUserReviewedBook(userId, bookId) {
  */
 export async function getPublicBookReviews(bookId, excludeUserId) {
   try {
+    console.log(`📚 Lade öffentliche Rezensionen für Buch: ${bookId}, exkl. User: ${excludeUserId}`);
     const reviewsRef = collection(db, "reviews");
     const q = query(
       reviewsRef,
       where("bookId", "==", String(bookId)),
       where("isPublic", "==", true)
+      // Optional: Filtere den excludeUserId serverseitig, falls gewünscht
+      // where("userId", "!=", excludeUserId) // Dies erfordert einen Composite Index
     );
-    
+
     const querySnapshot = await getDocs(q);
     const reviews = [];
-    
-    // Sammle alle UserIds um zusätzliche Benutzerinformationen zu laden
-    const userIds = new Set();
-    const reviewsData = [];
-    
+
     querySnapshot.forEach((doc) => {
       const reviewData = doc.data();
-      
-      // Schließe eigene Rezension aus wenn gewünscht
+      // Filtere den excludeUserId client-seitig, falls nicht serverseitig geschehen
       if (excludeUserId && reviewData.userId === excludeUserId) {
         return;
       }
-      
-      reviewsData.push({
-        id: doc.id,
-        ...reviewData
-      });
-      
-      userIds.add(reviewData.userId);
+      // Benutzername und profileImageUrl sind bereits im reviewData enthalten
+      reviews.push({ id: doc.id, ...reviewData });
     });
     
-    // Lade zusätzliche Benutzerinformationen
-    const userCache = {};
-    for (const userId of userIds) {
-      try {
-        const userData = await getUserDocument(userId);
-        if (userData) {
-          userCache[userId] = {
-            username: userData.username,
-            profileImageUrl: userData.profileImageUrl
-          };
-        }
-      } catch (error) {
-        console.warn(`Konnte Benutzerdaten für ${userId} nicht laden:`, error);
-      }
-    }
-    
-    // Bereichere Reviews mit aktuellen Benutzerdaten
-    reviewsData.forEach((reviewData) => {
-      const cachedUser = userCache[reviewData.userId];
-      if (cachedUser) {
-        reviewData.username = cachedUser.username || reviewData.username;
-        reviewData.profileImageUrl = cachedUser.profileImageUrl;
-      }
-      
-      reviews.push(reviewData);
-    });
-    
-    // Sortiere client-seitig nach createdAt (neueste zuerst)
     reviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    
+    console.log(`🔄 Geladene öffentliche Rezensionen: ${reviews.length}`);
     return reviews;
   } catch (error) {
     console.error("❌ Fehler beim Abrufen der öffentlichen Rezensionen:", error);

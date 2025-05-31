@@ -507,29 +507,38 @@ const InfoSection = ({ title, children }: { title: string; children: React.React
 );
 
 const Info = ({ userData }: { userData: any }) => (
-  <View style={styles.container}>
-    <InfoSection title="Über mich">
-      <Text style={styles.statusText}>{userData?.status || "Was liest du gerade?"}</Text>
-    </InfoSection>
+  <View>
+    {/* Status */}
+    {userData?.status && (
+      <InfoSection title="Status">
+        <Text style={styles.statusText}>{userData.status}</Text>
+      </InfoSection>
+    )}
 
-    <View style={styles.divider} />
-
-    <InfoSection title="Lieblings-Genres">
-      {userData?.genres && userData.genres.length > 0 ? (
+    {/* Lieblingsgenres */}
+    {userData?.genres && userData.genres.length > 0 && (
+      <InfoSection title="Lieblings-Genres">
         <View style={styles.chipContainer}>
           {userData.genres.map((genre: string) => (
             <GenreChip key={genre} genre={genre} />
           ))}
         </View>
-      ) : (
-        <Text style={styles.emptyStateText}>Keine Genres ausgewählt</Text>
-      )}
-    </InfoSection>
+      </InfoSection>
+    )}
+
+    {/* Mitglied seit */}
+    {userData?.createdAt && (
+      <InfoSection title="Dabei seit">
+        <MemberSince createdAt={userData.createdAt} />
+      </InfoSection>
+    )}
+
+    {/* Weitere Infos hier einfügen */}
   </View>
 );
 
 export default function ProfileScreen() {
-  const { userData, user } = useAuth();
+  const { user, userData, loadingAuth, refreshKey } = useAuth();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("info");
   const [totalBooks, setTotalBooks] = useState(0);
@@ -578,14 +587,15 @@ export default function ProfileScreen() {
           
           <View style={styles.userInfo}>
             <View style={styles.usernameRow}>
-              <Text style={styles.username}>{userData?.username || "Benutzername"}</Text>
-              <TouchableOpacity style={styles.editButton} onPress={handleEditPress}>
-                <Ionicons name="create-outline" size={18} color={COLORS.secondary} />
+              <Text style={styles.username} numberOfLines={1} ellipsizeMode="tail">
+                {userData?.username || "Unbekannter Nutzer"}
+              </Text>
+              <TouchableOpacity style={styles.editButton} onPress={() => router.push("/profile-edit")}>
+                <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
               </TouchableOpacity>
             </View>
             <SocialStats />
             <Achievements />
-            <MemberSince createdAt={userData?.createdAt} />
           </View>
         </View>
 
@@ -627,7 +637,7 @@ const styles = StyleSheet.create({
   profileRow: { flexDirection: "row", alignItems: "flex-start", gap: SPACING.lg },
   profileImageContainer: { position: "relative" },
   profileImage: {
-    width: 130, height: 130, borderRadius: 100, backgroundColor: "transparent",
+    width: 120, height: 120, borderRadius: 100, backgroundColor: "transparent",
     justifyContent: "center", alignItems: "center", borderWidth: 1.5, borderColor: COLORS.border,
   },
   imageEdit: {
