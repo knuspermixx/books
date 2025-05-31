@@ -1,13 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-    Alert,
-    Modal,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 const COLORS = {
@@ -64,11 +64,24 @@ export default function ShelfModal({ visible, shelf, onClose, onSave, onDelete }
   const [title, setTitle] = useState(shelf?.title || "");
   const [selectedIcon, setSelectedIcon] = useState(shelf?.icon || "library-outline");
   const [selectedColor, setSelectedColor] = useState(shelf?.color || AVAILABLE_COLORS[0]);
+  const [isPrivate, setIsPrivate] = useState(shelf?.isPrivate || false);
   const [isIconSelectorVisible, setIsIconSelectorVisible] = useState(false);
   const [isColorSelectorVisible, setIsColorSelectorVisible] = useState(false);
 
   const isEditing = !!shelf;
   const isDefaultShelf = shelf && ["completed", "reading", "wishlist"].includes(shelf.id);
+
+  // Aktualisiere Formular-Felder wenn sich das shelf-Objekt ändert
+  useEffect(() => {
+    if (visible) {
+      setTitle(shelf?.title || "");
+      setSelectedIcon(shelf?.icon || "library-outline");
+      setSelectedColor(shelf?.color || AVAILABLE_COLORS[0]);
+      setIsPrivate(shelf?.isPrivate || false);
+      setIsIconSelectorVisible(false);
+      setIsColorSelectorVisible(false);
+    }
+  }, [visible, shelf]);
 
   const handleSave = () => {
     if (!title.trim()) {
@@ -87,12 +100,14 @@ export default function ShelfModal({ visible, shelf, onClose, onSave, onDelete }
       title: title.trim(),
       icon: selectedIcon,
       color: selectedColor,
+      isPrivate: isPrivate,
     });
 
     // Reset form
     setTitle("");
     setSelectedIcon("library-outline");
     setSelectedColor(AVAILABLE_COLORS[0]);
+    setIsPrivate(false);
     onClose();
   };
 
@@ -123,6 +138,7 @@ export default function ShelfModal({ visible, shelf, onClose, onSave, onDelete }
     setTitle(shelf?.title || "");
     setSelectedIcon(shelf?.icon || "library-outline");
     setSelectedColor(shelf?.color || AVAILABLE_COLORS[0]);
+    setIsPrivate(shelf?.isPrivate || false);
     setIsIconSelectorVisible(false);
     setIsColorSelectorVisible(false);
   };
@@ -241,6 +257,48 @@ export default function ShelfModal({ visible, shelf, onClose, onSave, onDelete }
             )}
           </View>
 
+          {/* Privatsphäre */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Privatsphäre</Text>
+            <TouchableOpacity
+              style={styles.privacyToggle}
+              onPress={() => !isDefaultShelf && setIsPrivate(!isPrivate)}
+              disabled={isDefaultShelf}
+            >
+              <View style={styles.privacyToggleContent}>
+                <View>
+                  <Text style={styles.privacyToggleTitle}>
+                    {isPrivate ? "Privates Regal" : "Öffentliches Regal"}
+                  </Text>
+                  <Text style={styles.privacyToggleDescription}>
+                    {isPrivate 
+                      ? "Nur du kannst dieses Regal sehen" 
+                      : "Andere können dieses Regal sehen"
+                    }
+                  </Text>
+                </View>
+                <View style={styles.privacyToggleRight}>
+                  <Ionicons 
+                    name={isPrivate ? "lock-closed" : "lock-open-outline"} 
+                    size={20} 
+                    color={isPrivate ? COLORS.warning : COLORS.secondary} 
+                  />
+                  {!isDefaultShelf && (
+                    <View style={[
+                      styles.toggleSwitch, 
+                      isPrivate && styles.toggleSwitchActive
+                    ]}>
+                      <View style={[
+                        styles.toggleSwitchThumb,
+                        isPrivate && styles.toggleSwitchThumbActive
+                      ]} />
+                    </View>
+                  )}
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
+
           {/* Vorschau */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Vorschau</Text>
@@ -248,6 +306,9 @@ export default function ShelfModal({ visible, shelf, onClose, onSave, onDelete }
               <View style={styles.previewHeader}>
                 <Ionicons name={selectedIcon as any} size={20} color={selectedColor} />
                 <Text style={styles.previewTitle}>{title || "Regal-Name"}</Text>
+                {isPrivate && (
+                  <Ionicons name="lock-closed" size={16} color={COLORS.warning} />
+                )}
                 <View style={styles.previewCount}>
                   <Text style={styles.previewCountText}>0</Text>
                 </View>
@@ -451,5 +512,53 @@ const styles = StyleSheet.create({
     color: COLORS.secondary,
     flex: 1,
     lineHeight: 20,
+  },
+  privacyToggle: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+  },
+  privacyToggleContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  privacyToggleTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: COLORS.primary,
+    marginBottom: 2,
+  },
+  privacyToggleDescription: {
+    fontSize: 14,
+    color: COLORS.secondary,
+  },
+  privacyToggleRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: SPACING.md,
+  },
+  toggleSwitch: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.border,
+    padding: 2,
+    justifyContent: "center",
+  },
+  toggleSwitchActive: {
+    backgroundColor: COLORS.success,
+  },
+  toggleSwitchThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+    alignSelf: "flex-start",
+  },
+  toggleSwitchThumbActive: {
+    alignSelf: "flex-end",
   },
 });

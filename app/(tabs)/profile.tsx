@@ -198,6 +198,9 @@ const LibrarySection = ({ section, onEdit }: { section: any; onEdit: (section: a
         <View style={styles.sectionTitleRow}>
           <Ionicons name={section.icon as any} size={20} color={section.color} />
           <Text style={styles.sectionTitle}>{section.title}</Text>
+          {section.isPrivate && (
+            <Ionicons name="lock-closed" size={16} color={COLORS.warning} />
+          )}
           <Text style={styles.count}>{books.length}</Text>
         </View>
         <View style={styles.sectionActions}>
@@ -295,14 +298,46 @@ const Library = () => {
     }
   };
 
+  // Separate Standard- und benutzerdefinierte Regale
+  const standardShelves = shelves.filter(shelf => 
+    ["completed", "reading", "wishlist"].includes(shelf.id)
+  );
+  const customShelves = shelves.filter(shelf => 
+    !["completed", "reading", "wishlist"].includes(shelf.id)
+  );
+
   return (
     <View style={styles.container}>
-      {shelves.map((section, index) => (
-        <View key={section.id}>
-          <LibrarySection section={section} onEdit={handleEditShelf} />
-          {index < shelves.length - 1 && <View style={styles.divider} />}
+      {/* Standard-Regale */}
+      {standardShelves.length > 0 && (
+        <>
+          <View style={styles.sectionGroup}>
+            <Text style={styles.sectionGroupTitle}>Meine Bibliothek</Text>
+            {standardShelves.map((section, index) => (
+              <View key={section.id}>
+                <LibrarySection section={section} onEdit={handleEditShelf} />
+                {index < standardShelves.length - 1 && <View style={styles.divider} />}
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+      
+      {/* Trennung zwischen Standard- und benutzerdefinierten Regalen */}
+      {customShelves.length > 0 && <View style={styles.sectionGroupDivider} />}
+      
+      {/* Benutzerdefinierte Regale */}
+      {customShelves.length > 0 && (
+        <View style={styles.sectionGroup}>
+          <Text style={styles.sectionGroupTitle}>Meine Regale</Text>
+          {customShelves.map((section, index) => (
+            <View key={section.id}>
+              <LibrarySection section={section} onEdit={handleEditShelf} />
+              {index < customShelves.length - 1 && <View style={styles.divider} />}
+            </View>
+          ))}
         </View>
-      ))}
+      )}
       
       {/* Neues Regal hinzufügen */}
       <View style={styles.addShelfSection}>
@@ -634,6 +669,20 @@ const styles = StyleSheet.create({
   
   // Library
   librarySection: { paddingHorizontal: SPACING.xl, paddingVertical: SPACING.xl },
+  sectionGroup: { paddingBottom: SPACING.md },
+  sectionGroupTitle: { 
+    fontSize: 18, 
+    fontWeight: "700", 
+    color: COLORS.primary, 
+    paddingHorizontal: SPACING.xl, 
+    paddingTop: SPACING.lg, 
+    paddingBottom: SPACING.md 
+  },
+  sectionGroupDivider: { 
+    height: 8, 
+    backgroundColor: COLORS.light, 
+    marginVertical: SPACING.lg 
+  },
   horizontalBookList: { gap: SPACING.md },
   bookCover: {
     width: 110, height: 160, backgroundColor: "transparent", borderWidth: 1,

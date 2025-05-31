@@ -367,6 +367,7 @@ export async function createUserShelf(userId, shelfData) {
         title: shelfData.title,
         icon: shelfData.icon || "library-outline",
         color: shelfData.color || "#666666",
+        isPrivate: shelfData.isPrivate || false,
         count: 0,
       };
       
@@ -511,12 +512,18 @@ export async function addBookToShelf(userId, shelfId, bookData) {
         }
       }
       
+      // Bestimme ob das Ziel-Regal privat ist
+      const allShelves = userData.customShelves || DEFAULT_LIBRARY_SHELVES;
+      const targetShelf = allShelves.find(shelf => shelf.id === shelfId);
+      const isPrivateShelf = targetShelf?.isPrivate || false;
+      
       // Füge Buch zum Ziel-Regal hinzu
       shelfBooks[shelfId].push({
         id: bookData.id,
         title: bookData.title,
         authors: bookData.authors || [],
         imageLinks: bookData.imageLinks || {},
+        isPrivate: isPrivateShelf,
         addedAt: new Date().toISOString()
       });
       
