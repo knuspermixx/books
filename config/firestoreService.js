@@ -182,19 +182,67 @@ export async function updateProfileImage(userId, profileImageUrl) {
  */
 export async function createReview(bookId, reviewData) {
   try {
+    console.log("🔄 Erstelle Rezension für Buch:", bookId);
+    console.log("📝 Rezensionsdaten:", reviewData);
+    
+    // Prüfe ob bereits eine Rezension des Benutzers für dieses Buch existiert
+    const existingReview = await getUserBookRating(reviewData.userId, bookId);
+    if (existingReview) {
+      throw new Error("Du hast bereits eine Rezension für dieses Buch abgegeben. Bitte aktualisiere deine bestehende Bewertung.");
+    }
+    
     const reviewsRef = collection(db, "reviews");
     const reviewDoc = await addDoc(reviewsRef, {
-      bookId,
-      ...reviewData,
+      bookId: String(bookId), // Stelle sicher, dass bookId als String gespeichert wird
+      userId: reviewData.userId,
+      username: reviewData.username,
+      rating: reviewData.rating,
+      text: reviewData.text || "",
       likes: [],
+      isPublic: true, // Alle Rezensionen sind standardmäßig öffentlich
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
-    console.log("Rezension erfolgreich erstellt");
+    
+    console.log("✅ Rezension erfolgreich erstellt mit ID:", reviewDoc.id);
+    console.log("📚 Für Buch-ID:", String(bookId));
+    
+    // Aktualisiere auch die Buchinformationen Cache (optional)
+    await updateBookReviewsCache(bookId);
+    
     return reviewDoc.id;
   } catch (error) {
-    console.error("Fehler beim Erstellen der Rezension:", error);
+    console.error("❌ Fehler beim Erstellen der Rezension:", error);
     throw error;
+  }
+}
+
+/**
+ * Cache für Buchrezensionen aktualisieren (optional - für Performance)
+ */
+async function updateBookReviewsCache(bookId) {
+  try {
+    // Lade alle Rezensionen für das Buch
+    const reviews = await getBookReviews(bookId);
+    
+    // Berechne Durchschnittsbewertung
+    const averageRating = reviews.length > 0 
+      ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length 
+      : 0;
+    
+    // Speichere in books cache collection (optional)
+    const bookCacheRef = doc(db, "bookCache", String(bookId));
+    await setDoc(bookCacheRef, {
+      bookId: String(bookId),
+      reviewCount: reviews.length,
+      averageRating: Math.round(averageRating * 10) / 10, // Runde auf 1 Dezimalstelle
+      lastUpdated: new Date().toISOString()
+    }, { merge: true });
+    
+    console.log(`📊 Buch-Cache für ${bookId} aktualisiert: ${reviews.length} Rezensionen, ⭐ ${averageRating.toFixed(1)}`);
+  } catch (error) {
+    console.warn("Warnung: Buch-Cache konnte nicht aktualisiert werden:", error);
+    // Dies ist nicht kritisch, daher nicht werfen
   }
 }
 
@@ -203,29 +251,76 @@ export async function createReview(bookId, reviewData) {
  */
 export async function getBookReviews(bookId) {
   try {
+    console.log("🔍 Lade Rezensionen für Buch-ID:", bookId);
+    
     const reviewsRef = collection(db, "reviews");
     // Verwende nur where-Filter ohne orderBy um Index-Anforderung zu vermeiden
     const q = query(
       reviewsRef,
-      where("bookId", "==", bookId)
+      where("bookId", "==", String(bookId)) // Stelle sicher, dass als String gesucht wird
     );
     
     const querySnapshot = await getDocs(q);
     const reviews = [];
     
+    console.log("📊 Anzahl gefundener Rezensionen:", querySnapshot.docs.length);
+    
+    // Sammle alle UserIds um zusätzliche Benutzerinformationen zu laden
+    const userIds = new Set();
+    const reviewsData = [];
+    
     querySnapshot.forEach((doc) => {
-      reviews.push({
+      const reviewData = doc.data();
+      console.log("📝 Gefundene Rezension:", {
         id: doc.id,
-        ...doc.data()
+        bookId: reviewData.bookId,
+        userId: reviewData.userId,
+        username: reviewData.username,
+        rating: reviewData.rating
       });
+      
+      reviewsData.push({
+        id: doc.id,
+        ...reviewData
+      });
+      
+      userIds.add(reviewData.userId);
+    });
+    
+    // Lade zusätzliche Benutzerinformationen wenn nötig
+    const userCache = {};
+    for (const userId of userIds) {
+      try {
+        const userData = await getUserDocument(userId);
+        if (userData) {
+          userCache[userId] = {
+            username: userData.username,
+            profileImageUrl: userData.profileImageUrl
+          };
+        }
+      } catch (error) {
+        console.warn(`Konnte Benutzerdaten für ${userId} nicht laden:`, error);
+      }
+    }
+    
+    // Bereichere Reviews mit aktuellen Benutzerdaten
+    reviewsData.forEach((reviewData) => {
+      const cachedUser = userCache[reviewData.userId];
+      if (cachedUser) {
+        reviewData.username = cachedUser.username || reviewData.username;
+        reviewData.profileImageUrl = cachedUser.profileImageUrl;
+      }
+      
+      reviews.push(reviewData);
     });
     
     // Sortiere client-seitig nach createdAt (neueste zuerst)
     reviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     
+    console.log("✅ Rezensionen erfolgreich geladen:", reviews.length);
     return reviews;
   } catch (error) {
-    console.error("Fehler beim Abrufen der Rezensionen:", error);
+    console.error("❌ Fehler beim Abrufen der Rezensionen:", error);
     throw error;
   }
 }
@@ -282,7 +377,14 @@ export async function updateReview(reviewId, userId, updates) {
         updatedAt: new Date().toISOString(),
       });
       
-      console.log("Rezension erfolgreich aktualisiert");
+      console.log("✅ Rezension erfolgreich aktualisiert");
+      
+      // Aktualisiere auch den Buch-Cache
+      await updateBookReviewsCache(reviewData.bookId);
+      
+      return true;
+    } else {
+      throw new Error("Rezension nicht gefunden");
     }
   } catch (error) {
     console.error("Fehler beim Aktualisieren der Rezension:", error);
@@ -306,12 +408,56 @@ export async function deleteReview(reviewId, userId) {
         throw new Error("Nicht berechtigt, diese Rezension zu löschen");
       }
       
+      const bookId = reviewData.bookId; // Speichere bookId vor dem Löschen
+      
       await deleteDoc(reviewRef);
-      console.log("Rezension erfolgreich gelöscht");
+      console.log("✅ Rezension erfolgreich gelöscht");
+      
+      // Aktualisiere auch den Buch-Cache
+      await updateBookReviewsCache(bookId);
+      
+      return true;
+    } else {
+      throw new Error("Rezension nicht gefunden");
     }
   } catch (error) {
     console.error("Fehler beim Löschen der Rezension:", error);
     throw error;
+  }
+}
+
+/**
+ * Buchstatistiken aus Cache abrufen
+ */
+export async function getBookStats(bookId) {
+  try {
+    const bookCacheRef = doc(db, "bookCache", String(bookId));
+    const bookCacheSnap = await getDoc(bookCacheRef);
+    
+    if (bookCacheSnap.exists()) {
+      return bookCacheSnap.data();
+    }
+    
+    // Falls kein Cache existiert, berechne live
+    const reviews = await getBookReviews(bookId);
+    const averageRating = reviews.length > 0 
+      ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length 
+      : 0;
+    
+    return {
+      bookId: String(bookId),
+      reviewCount: reviews.length,
+      averageRating: Math.round(averageRating * 10) / 10,
+      lastUpdated: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error("Fehler beim Abrufen der Buchstatistiken:", error);
+    return {
+      bookId: String(bookId),
+      reviewCount: 0,
+      averageRating: 0,
+      lastUpdated: new Date().toISOString()
+    };
   }
 }
 
@@ -646,5 +792,123 @@ export async function findBookInStandardShelves(userId, bookId) {
   } catch (error) {
     console.error("Fehler beim Suchen des Buches in Standard-Regalen:", error);
     return null;
+  }
+}
+
+/**
+ * Bewertung eines Benutzers für ein spezifisches Buch abrufen
+ */
+export async function getUserBookRating(userId, bookId) {
+  try {
+    const reviewsRef = collection(db, "reviews");
+    const q = query(
+      reviewsRef,
+      where("bookId", "==", String(bookId)),
+      where("userId", "==", userId)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    
+    if (!querySnapshot.empty) {
+      const reviewDoc = querySnapshot.docs[0];
+      const reviewData = reviewDoc.data();
+      return {
+        rating: reviewData.rating,
+        reviewId: reviewDoc.id,
+        text: reviewData.text || "",
+        createdAt: reviewData.createdAt,
+        isPublic: reviewData.isPublic !== false // Standard ist true
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("Fehler beim Abrufen der Benutzerbewertung:", error);
+    return null;
+  }
+}
+
+/**
+ * Prüfe ob ein Benutzer bereits eine Rezension für ein Buch geschrieben hat
+ */
+export async function hasUserReviewedBook(userId, bookId) {
+  try {
+    const rating = await getUserBookRating(userId, bookId);
+    return rating !== null;
+  } catch (error) {
+    console.error("Fehler beim Prüfen der Benutzerrezension:", error);
+    return false;
+  }
+}
+
+/**
+ * Alle öffentlichen Rezensionen für ein Buch abrufen (für andere Benutzer)
+ */
+export async function getPublicBookReviews(bookId, excludeUserId) {
+  try {
+    const reviewsRef = collection(db, "reviews");
+    const q = query(
+      reviewsRef,
+      where("bookId", "==", String(bookId)),
+      where("isPublic", "==", true)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const reviews = [];
+    
+    // Sammle alle UserIds um zusätzliche Benutzerinformationen zu laden
+    const userIds = new Set();
+    const reviewsData = [];
+    
+    querySnapshot.forEach((doc) => {
+      const reviewData = doc.data();
+      
+      // Schließe eigene Rezension aus wenn gewünscht
+      if (excludeUserId && reviewData.userId === excludeUserId) {
+        return;
+      }
+      
+      reviewsData.push({
+        id: doc.id,
+        ...reviewData
+      });
+      
+      userIds.add(reviewData.userId);
+    });
+    
+    // Lade zusätzliche Benutzerinformationen
+    const userCache = {};
+    for (const userId of userIds) {
+      try {
+        const userData = await getUserDocument(userId);
+        if (userData) {
+          userCache[userId] = {
+            username: userData.username,
+            profileImageUrl: userData.profileImageUrl
+          };
+        }
+      } catch (error) {
+        console.warn(`Konnte Benutzerdaten für ${userId} nicht laden:`, error);
+      }
+    }
+    
+    // Bereichere Reviews mit aktuellen Benutzerdaten
+    reviewsData.forEach((reviewData) => {
+      const cachedUser = userCache[reviewData.userId];
+      if (cachedUser) {
+        reviewData.username = cachedUser.username || reviewData.username;
+        reviewData.profileImageUrl = cachedUser.profileImageUrl;
+      }
+      
+      reviews.push(reviewData);
+    });
+    
+    // Sortiere client-seitig nach createdAt (neueste zuerst)
+    reviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    
+    return reviews;
+  } catch (error) {
+    console.error("❌ Fehler beim Abrufen der öffentlichen Rezensionen:", error);
+    throw error;
   }
 }

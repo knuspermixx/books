@@ -14,10 +14,12 @@ import {
   createUserShelf,
   deleteUserShelf,
   getShelfBooks,
+  getUserBookRating,
   getUserShelves,
   updateUserShelf,
 } from "../../config/firestoreService";
 import ShelfModal from "../components/ShelfModal";
+import StarRating from "../components/StarRating";
 import { useAuth } from "../contexts/AuthContext";
 
 // Design System
@@ -41,9 +43,9 @@ const SOCIAL_STATS = [
 ];
 
 const LIBRARY_SECTIONS = [
-  { id: "completed", title: "Durchgelesen", icon: "checkmark-circle-outline", color: COLORS.success },
-  { id: "reading", title: "Aktuell dabei", icon: "book-outline", color: COLORS.info },
-  { id: "wishlist", title: "Leseliste", icon: "bookmark-outline", color: COLORS.warning },
+  { id: "completed", title: "Gelesen", icon: "checkmark-circle-outline", color: COLORS.success },
+  { id: "reading", title: "Lese ich gerade", icon: "book-outline", color: COLORS.info },
+  { id: "wishlist", title: "Merkliste", icon: "bookmark-outline", color: COLORS.warning },
 ];
 
 const ACHIEVEMENTS = [
@@ -76,13 +78,39 @@ const StatItem = ({ number, label }: { number: string; label: string }) => (
   </View>
 );
 
-const BookCover = ({ onPress, bookId, book, loading }: { 
+const BookCover = ({ onPress, bookId, book, loading, showRating = false }: { 
   onPress?: () => void; 
   bookId?: string; 
   book?: any;
   loading?: boolean;
+  showRating?: boolean;
 }) => {
   const router = useRouter();
+  const { user } = useAuth();
+  const [userRating, setUserRating] = useState<number | null>(null);
+  const [loadingRating, setLoadingRating] = useState(showRating);
+  
+  // Lade Benutzerbewertung wenn showRating aktiviert ist
+  useEffect(() => {
+    const loadUserRating = async () => {
+      if (!showRating || !user || !book?.id) {
+        setLoadingRating(false);
+        return;
+      }
+      
+      try {
+        const rating = await getUserBookRating(user.uid, book.id);
+        setUserRating(rating?.rating || null);
+      } catch (error) {
+        console.error("Fehler beim Laden der Benutzerbewertung:", error);
+        setUserRating(null);
+      } finally {
+        setLoadingRating(false);
+      }
+    };
+
+    loadUserRating();
+  }, [showRating, user, book?.id]);
   
   const handlePress = () => {
     if (onPress) {
@@ -109,17 +137,29 @@ const BookCover = ({ onPress, bookId, book, loading }: {
                       book?.imageLinks?.smallThumbnail;
 
   return (
-    <TouchableOpacity onPress={handlePress} style={styles.bookCover}>
-      {imageSource ? (
-        <Image 
-          source={{ uri: imageSource }}
-          style={styles.bookCoverImage}
-          resizeMode="cover"
-        />
-      ) : (
-        <Ionicons name="book" size={24} color={COLORS.tertiary} />
+    <View style={styles.bookCoverContainer}>
+      <TouchableOpacity onPress={handlePress} style={styles.bookCover}>
+        {imageSource ? (
+          <Image 
+            source={{ uri: imageSource }}
+            style={styles.bookCoverImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <Ionicons name="book" size={24} color={COLORS.tertiary} />
+        )}
+      </TouchableOpacity>
+      
+      {showRating && !loadingRating && (
+        <View style={styles.bookRatingOverlay}>
+          <StarRating 
+            rating={userRating} 
+            size={12} 
+            showGray={true}
+          />
+        </View>
       )}
-    </TouchableOpacity>
+    </View>
   );
 };
 
@@ -222,9 +262,13 @@ const LibrarySection = ({ section, onEdit }: { section: any; onEdit: (section: a
             <BookCover key={`loading-${index}`} loading={true} />
           ))
         ) : books.length > 0 ? (
-          // Zeige echte Bücher
+          // Zeige echte Bücher - mit Bewertungen für "Durchgelesen" Sektion
           books.map((book, index) => (
-            <BookCover key={book.id || index} book={book} />
+            <BookCover 
+              key={book.id || index} 
+              book={book} 
+              showRating={section.id === 'completed'} 
+            />
           ))
         ) : (
           // Zeige Placeholder für leere Regale
@@ -684,6 +728,9 @@ const styles = StyleSheet.create({
     marginVertical: SPACING.lg 
   },
   horizontalBookList: { gap: SPACING.md },
+  bookCoverContainer: {
+    position: 'relative',
+  },
   bookCover: {
     width: 110, height: 160, backgroundColor: "transparent", borderWidth: 1,
     borderColor: COLORS.border, borderRadius: 6, justifyContent: "center", alignItems: "center",
@@ -692,6 +739,16 @@ const styles = StyleSheet.create({
   bookCoverImage: {
     width: '100%',
     height: '100%',
+  },
+  bookRatingOverlay: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    right: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 4,
+    padding: 2,
+    alignItems: 'center',
   },
   
   // Empty shelf styles

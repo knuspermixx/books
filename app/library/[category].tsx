@@ -2,7 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Image, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { getShelfBooks } from "../../config/firestoreService";
+import { getShelfBooks, getUserBookRating } from "../../config/firestoreService";
+import StarRating from "../components/StarRating";
 import { useAuth } from "../contexts/AuthContext";
 
 const CATEGORY_CONFIG = {
@@ -40,8 +41,33 @@ interface Book {
   addedAt: string;
 }
 
-const BookCover = ({ book }: { book: Book }) => {
+const BookCover = ({ book, showRating = false }: { book: Book; showRating?: boolean }) => {
   const router = useRouter();
+  const { user } = useAuth();
+  const [userRating, setUserRating] = useState<number | null>(null);
+  const [loadingRating, setLoadingRating] = useState(showRating);
+  
+  // Lade Benutzerbewertung wenn showRating aktiviert ist
+  useEffect(() => {
+    const loadUserRating = async () => {
+      if (!showRating || !user || !book?.id) {
+        setLoadingRating(false);
+        return;
+      }
+      
+      try {
+        const rating = await getUserBookRating(user.uid, book.id);
+        setUserRating(rating?.rating || null);
+      } catch (error) {
+        console.error("Fehler beim Laden der Benutzerbewertung:", error);
+        setUserRating(null);
+      } finally {
+        setLoadingRating(false);
+      }
+    };
+
+    loadUserRating();
+  }, [showRating, user, book?.id]);
   
   const handlePress = () => {
     router.push(`/book/${book.id}` as any);
@@ -55,15 +81,26 @@ const BookCover = ({ book }: { book: Book }) => {
 
   return (
     <TouchableOpacity style={styles.bookItem} onPress={handlePress}>
-      <View style={styles.bookCover}>
-        {imageSource ? (
-          <Image 
-            source={{ uri: imageSource }}
-            style={styles.bookCoverImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <Ionicons name="book" size={20} color="#ccc" />
+      <View style={styles.bookCoverContainer}>
+        <View style={styles.bookCover}>
+          {imageSource ? (
+            <Image 
+              source={{ uri: imageSource }}
+              style={styles.bookCoverImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <Ionicons name="book" size={20} color="#ccc" />
+          )}
+        </View>
+        {showRating && !loadingRating && (
+          <View style={styles.bookRatingOverlay}>
+            <StarRating 
+              rating={userRating} 
+              size={10} 
+              showGray={true}
+            />
+          </View>
         )}
       </View>
       <Text style={styles.bookTitle} numberOfLines={2}>
@@ -161,7 +198,7 @@ export default function LibraryCategoryScreen() {
   }
 
   const renderBook = ({ item }: { item: Book }) => (
-    <BookCover book={item} />
+    <BookCover book={item} showRating={category === 'completed'} />
   );
 
   const renderEmptyList = () => (
@@ -280,6 +317,10 @@ const styles = StyleSheet.create({
     maxWidth: '32%',
     alignItems: 'center',
   },
+  bookCoverContainer: {
+    position: 'relative',
+    width: '100%',
+  },
   bookCover: {
     width: '100%',
     aspectRatio: 0.65,
@@ -295,6 +336,17 @@ const styles = StyleSheet.create({
   bookCoverImage: {
     width: '100%',
     height: '100%',
+  },
+  bookRatingOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 4,
+    padding: 2,
+    alignItems: 'center',
+    marginHorizontal: 4,
   },
   bookTitle: {
     fontSize: 12,

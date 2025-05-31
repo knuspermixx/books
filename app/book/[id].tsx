@@ -19,10 +19,13 @@ import {
     DEFAULT_LIBRARY_SHELVES,
     findBookInStandardShelves,
     getBookReviews,
+    getUserBookRating,
     getUserShelves,
-    isBookInShelf
+    isBookInShelf,
+    updateReview
 } from "../../config/firestoreService";
 import { Book, getBookById } from "../../services/googleBooksApi";
+import InteractiveStarRating from "../components/InteractiveStarRating";
 import { useAuth } from "../contexts/AuthContext";
 
 // Hardcodierte Buchdaten werden durch Google Books API ersetzt - entfernt
@@ -54,6 +57,10 @@ export default function BookDetailScreen() {
     const [userShelves, setUserShelves] = useState<any[]>([]);
     const [loadingShelves, setLoadingShelves] = useState(true);
     const [bookInShelves, setBookInShelves] = useState<Record<string, boolean>>({});
+    
+    // Benutzerbewertung State
+    const [userRating, setUserRating] = useState<{rating: number; reviewId?: string; text?: string; createdAt?: string; isPublic?: boolean} | null>(null);
+    const [loadingUserRating, setLoadingUserRating] = useState(true);
 
     useEffect(() => {
         const loadBookData = async () => {
@@ -82,9 +89,10 @@ export default function BookDetailScreen() {
             if (!id) return;
             
             try {
-                // Lade nur Firebase Reviews - keine hardcodierten mehr
-                const firebaseReviews = await getBookReviews(id);
-                setReviews(firebaseReviews);
+                // Lade alle öffentlichen Rezensionen (exklusive eigene falls vorhanden)
+                const publicReviews = await getBookReviews(id, user?.uid, true);
+                console.log("🔄 Geladene öffentliche Rezensionen:", publicReviews.length);
+                setReviews(publicReviews);
             } catch (error) {
                 console.error("Fehler beim Laden der Rezensionen:", error);
                 setReviews([]);
@@ -115,6 +123,26 @@ export default function BookDetailScreen() {
             }
         };
 
+        const loadUserRating = async () => {
+            if (!user || !id) return;
+            
+            setLoadingUserRating(true);
+            try {
+                const rating = await getUserBookRating(user.uid, id);
+                setUserRating(rating);
+                
+                // Wenn der Benutzer bereits eine Bewertung hat, setze diese als Standard für das Formular
+                if (rating) {
+                    setNewReview({ rating: rating.rating, text: rating.text || "" });
+                }
+            } catch (error) {
+                console.error("Fehler beim Laden der Benutzerbewertung:", error);
+                setUserRating(null);
+            } finally {
+                setLoadingUserRating(false);
+            }
+        };
+
         if (id) {
             loadBookData();
             loadReviews();
@@ -122,6 +150,7 @@ export default function BookDetailScreen() {
         
         if (user) {
             loadUserShelves();
+            loadUserRating();
         }
     }, [id, router, user]);
 
@@ -131,15 +160,71 @@ export default function BookDetailScreen() {
         return (sum / reviews.length).toFixed(1);
     };
 
+    const calculateTotalReviewsText = () => {
+        // Füge eigene Bewertung hinzu falls vorhanden
+        const hasOwnReview = userRating?.rating ? 1 : 0;
+        const totalReviews = reviews.length + hasOwnReview;
+        
+        if (totalReviews === 0) {
+            return "Noch keine Bewertungen";
+        }
+        
+        return `${totalReviews} Community Bewertung${totalReviews === 1 ? '' : 'en'}`;
+    };
+
     const refreshReviews = async () => {
         if (!id) return;
         
         try {
-            // Lade nur Firebase Reviews
-            const firebaseReviews = await getBookReviews(id);
-            setReviews(firebaseReviews);
+            // Lade alle öffentlichen Rezensionen (exklusive eigene falls vorhanden)
+            const publicReviews = await getBookReviews(id, user?.uid, true);
+            setReviews(publicReviews);
         } catch (error) {
             console.error("Fehler beim Laden der Rezensionen:", error);
+        }
+    };
+
+    const refreshUserRating = async () => {
+        if (!user || !id) return;
+        
+        try {
+            const rating = await getUserBookRating(user.uid, id);
+            setUserRating(rating);
+        } catch (error) {
+            console.error("Fehler beim Laden der Benutzerbewertung:", error);
+        }
+    };
+
+    const handleQuickRating = async (rating: number) => {
+        if (!user || !userData || !id) return;
+
+        setSubmitting(true);
+        try {
+            if (userRating?.reviewId) {
+                // Aktualisiere bestehende Bewertung
+                await updateReview(userRating.reviewId, user.uid, {
+                    rating: rating,
+                    text: userRating.text || "",
+                });
+            } else {
+                // Erstelle neue Bewertung (nur Rating, kein Text)
+                await createReview(id, {
+                    userId: user.uid,
+                    username: userData.username,
+                    rating: rating,
+                    text: "",
+                });
+            }
+            
+            // Reload reviews and user rating
+            await refreshReviews();
+            await refreshUserRating();
+            
+        } catch (error) {
+            console.error("Fehler beim Speichern der Schnellbewertung:", error);
+            Alert.alert("Fehler", "Bewertung konnte nicht gespeichert werden.");
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -157,24 +242,54 @@ export default function BookDetailScreen() {
 
         setSubmitting(true);
         try {
-            await createReview(id, {
-                userId: user.uid,
-                username: userData.username,
-                rating: newReview.rating,
-                text: newReview.text.trim(),
-            });
+            if (userRating?.reviewId) {
+                // Aktualisiere bestehende Bewertung
+                await updateReview(userRating.reviewId, user.uid, {
+                    rating: newReview.rating,
+                    text: newReview.text.trim(),
+                });
+                Alert.alert("Erfolg", "Deine Bewertung wurde aktualisiert!");
+            } else {
+                // Erstelle neue Bewertung
+                try {
+                    await createReview(id, {
+                        userId: user.uid,
+                        username: userData.username,
+                        rating: newReview.rating,
+                        text: newReview.text.trim(),
+                    });
+                    Alert.alert("Erfolg", "Deine Bewertung wurde hinzugefügt!");
+                } catch (createError: any) {
+                    // Wenn bereits eine Rezension existiert, versuche zu aktualisieren
+                    if (createError.message && createError.message.includes("bereits eine Rezension")) {
+                        Alert.alert("Info", "Du hast bereits eine Bewertung für dieses Buch. Deine neue Bewertung wird die alte ersetzen.");
+                        // Lade die aktuelle Bewertung und aktualisiere sie
+                        const currentRating = await getUserBookRating(user.uid, id);
+                        if (currentRating?.reviewId) {
+                            await updateReview(currentRating.reviewId, user.uid, {
+                                rating: newReview.rating,
+                                text: newReview.text.trim(),
+                            });
+                            Alert.alert("Erfolg", "Deine Bewertung wurde aktualisiert!");
+                        } else {
+                            throw createError;
+                        }
+                    } else {
+                        throw createError;
+                    }
+                }
+            }
 
             // Reset form
-            setNewReview({ rating: 5, text: "" });
             setShowReviewForm(false);
             
-            // Reload reviews
+            // Reload reviews and user rating
             await refreshReviews();
+            await refreshUserRating();
             
-            Alert.alert("Erfolg", "Deine Rezension wurde hinzugefügt!");
-        } catch (error) {
-            console.error("Fehler beim Erstellen der Rezension:", error);
-            Alert.alert("Fehler", "Rezension konnte nicht erstellt werden.");
+        } catch (error: any) {
+            console.error("Fehler beim Erstellen/Aktualisieren der Rezension:", error);
+            Alert.alert("Fehler", error.message || "Bewertung konnte nicht gespeichert werden.");
         } finally {
             setSubmitting(false);
         }
@@ -356,6 +471,41 @@ export default function BookDetailScreen() {
                         ))}
                     </View>
                     
+                    {/* Schnellbewertung */}
+                    {user && !loadingUserRating && (
+                        <View style={{alignItems: 'center', marginTop: 16, marginBottom: 8}}>
+                            <Text style={styles.quickRatingLabel}>
+                                {userRating ? "Deine Bewertung:" : "Bewerte dieses Buch:"}
+                            </Text>
+                            <View style={{flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8}}>
+                                <InteractiveStarRating
+                                    rating={userRating?.rating || 0}
+                                    onRatingChange={handleQuickRating}
+                                    size={28}
+                                    disabled={submitting}
+                                />
+                                {userRating && (
+                                    <TouchableOpacity 
+                                        onPress={() => {
+                                            setNewReview({ 
+                                                rating: userRating.rating, 
+                                                text: userRating.text || "" 
+                                            });
+                                            setShowReviewForm(true);
+                                        }}
+                                        style={styles.editReviewButton}
+                                    >
+                                        <Ionicons name="create-outline" size={16} color="#007AFF" />
+                                        <Text style={styles.editReviewText}>Bearbeiten</Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+                            {submitting && (
+                                <ActivityIndicator size="small" color="#007AFF" style={{marginTop: 8}} />
+                            )}
+                        </View>
+                    )}
+                    
                     {/* Google Books Bewertung & Firebase Bewertungen */}
                     <View style={{alignItems: 'center', marginTop: 12, gap: 4}}>
                         {book.rating && book.ratingsCount && (
@@ -367,11 +517,11 @@ export default function BookDetailScreen() {
                             </View>
                         )}
                         
-                        {reviews.length > 0 && (
+                        {(reviews.length > 0 || userRating?.rating) && (
                             <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
                                 {renderStars(parseFloat(calculateAverageRating()), 16)}
                                 <Text style={styles.averageRating}>
-                                    {calculateAverageRating()}/5 ({reviews.length} Community Bewertungen)
+                                    {calculateAverageRating()}/5 ({calculateTotalReviewsText()})
                                 </Text>
                             </View>
                         )}
@@ -623,7 +773,7 @@ export default function BookDetailScreen() {
                 <View style={styles.reviewsSection}>
                     <View style={styles.reviewsHeader}>
                         <Text style={styles.reviewsTitle}>
-                            Rezensionen ({reviews.length})
+                            Rezensionen ({userRating?.rating ? reviews.length + 1 : reviews.length})
                         </Text>
                         <TouchableOpacity 
                             style={styles.addReviewButton}
@@ -639,6 +789,52 @@ export default function BookDetailScreen() {
                             </Text>
                         </TouchableOpacity>
                     </View>
+
+                    {/* User's Own Review */}
+                    {userRating && userRating.rating && !showReviewForm && (
+                        <View style={styles.ownReviewSection}>
+                            <Text style={styles.ownReviewTitle}>Deine Bewertung</Text>
+                            <View style={styles.reviewCard}>
+                                <View style={styles.reviewHeader}>
+                                    <View style={styles.userInfo}>
+                                        <View style={styles.avatar}>
+                                            <Ionicons name="person" size={20} color="#007AFF" />
+                                        </View>
+                                        <View style={styles.userDetails}>
+                                            <Text style={[styles.username, {color: "#007AFF"}]}>
+                                                {userData?.username || "Du"}
+                                            </Text>
+                                            <View style={styles.ratingRow}>
+                                                {renderStars(userRating.rating, 14)}
+                                                <Text style={styles.reviewDate}>
+                                                    {userRating.createdAt ? 
+                                                        new Date(userRating.createdAt).toLocaleDateString('de-DE') : 
+                                                        'Heute'
+                                                    }
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    </View>
+                                    <TouchableOpacity 
+                                        onPress={() => {
+                                            setNewReview({ 
+                                                rating: userRating.rating, 
+                                                text: userRating.text || "" 
+                                            });
+                                            setShowReviewForm(true);
+                                        }}
+                                        style={styles.editReviewButton}
+                                    >
+                                        <Ionicons name="create-outline" size={16} color="#007AFF" />
+                                        <Text style={styles.editReviewText}>Bearbeiten</Text>
+                                    </TouchableOpacity>
+                                </View>
+                                {userRating.text && userRating.text.trim() && (
+                                    <Text style={styles.reviewText}>{userRating.text}</Text>
+                                )}
+                            </View>
+                        </View>
+                    )}
 
                     {/* New Review Form */}
                     {showReviewForm && (
@@ -1120,5 +1316,37 @@ const styles = StyleSheet.create({
     dropdownItemTextSelected: {
         color: "#4CAF50",
         fontWeight: "600",
+    },
+    quickRatingLabel: {
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#000",
+        textAlign: "center",
+    },
+    editReviewButton: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 4,
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 6,
+        backgroundColor: "#f0f8ff",
+        borderWidth: 1,
+        borderColor: "#007AFF",
+    },
+    editReviewText: {
+        fontSize: 14,
+        color: "#007AFF",
+        fontWeight: "500",
+    },
+    ownReviewSection: {
+        paddingHorizontal: 24,
+        marginBottom: 20,
+    },
+    ownReviewTitle: {
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#000",
+        marginBottom: 12,
     },
 });
