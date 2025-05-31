@@ -18,6 +18,27 @@ export const BOOK_GENRES = [
 ];
 
 /**
+ * Standard-Bibliotheksregale
+ */
+export const DEFAULT_LIBRARY_SHELVES = [
+  { id: "completed", title: "Durchgelesen", icon: "checkmark-circle-outline", color: "#4CAF50" },
+  { id: "reading", title: "Aktuell dabei", icon: "book-outline", color: "#2196F3" },
+  { id: "wishlist", title: "Leseliste", icon: "bookmark-outline", color: "#FF9800" },
+];
+
+/**
+ * Standard-Regal-IDs (diese können nicht bearbeitet oder neu erstellt werden)
+ */
+export const PROTECTED_SHELF_IDS = DEFAULT_LIBRARY_SHELVES.map(shelf => shelf.id);
+
+/**
+ * Prüft ob eine Regal-ID geschützt ist
+ */
+function isProtectedShelf(shelfId) {
+  return PROTECTED_SHELF_IDS.includes(shelfId);
+}
+
+/**
  * Zufälligen Benutzernamen generieren
  */
 function generateRandomUsername() {
@@ -283,6 +304,156 @@ export async function deleteReview(reviewId, userId) {
     }
   } catch (error) {
     console.error("Fehler beim Löschen der Rezension:", error);
+    throw error;
+  }
+}
+
+/**
+ * Benutzer-Regale aus Firestore abrufen
+ */
+export async function getUserShelves(userId) {
+  try {
+    const userDocRef = doc(db, "users", userId);
+    const userDocSnap = await getDoc(userDocRef);
+    
+    if (userDocSnap.exists()) {
+      const userData = userDocSnap.data();
+      return userData.customShelves || DEFAULT_LIBRARY_SHELVES;
+    } else {
+      return DEFAULT_LIBRARY_SHELVES;
+    }
+  } catch (error) {
+    console.error("Fehler beim Abrufen der Benutzer-Regale:", error);
+    throw error;
+  }
+}
+
+/**
+ * Neues Regal erstellen
+ */
+export async function createUserShelf(userId, shelfData) {
+  try {
+    // Prüfen ob versucht wird, ein Standard-Regal zu erstellen
+    if (isProtectedShelf(shelfData.id) || 
+        PROTECTED_SHELF_IDS.some(id => 
+          shelfData.title?.toLowerCase() === DEFAULT_LIBRARY_SHELVES.find(s => s.id === id)?.title?.toLowerCase()
+        )) {
+      throw new Error("Standard-Regale können nicht erstellt werden. Bitte wählen Sie einen anderen Namen.");
+    }
+
+    const userDocRef = doc(db, "users", userId);
+    const userDocSnap = await getDoc(userDocRef);
+    
+    if (userDocSnap.exists()) {
+      const userData = userDocSnap.data();
+      const currentShelves = userData.customShelves || DEFAULT_LIBRARY_SHELVES;
+      
+      // Prüfen ob bereits ein Regal mit diesem Titel existiert
+      if (currentShelves.some(shelf => 
+        shelf.title.toLowerCase() === shelfData.title.toLowerCase()
+      )) {
+        throw new Error("Ein Regal mit diesem Namen existiert bereits.");
+      }
+      
+      const newShelf = {
+        id: `custom_${Date.now()}`,
+        title: shelfData.title,
+        icon: shelfData.icon || "library-outline",
+        color: shelfData.color || "#666666",
+        count: 0,
+      };
+      
+      const updatedShelves = [...currentShelves, newShelf];
+      
+      await updateDoc(userDocRef, {
+        customShelves: updatedShelves,
+        updatedAt: new Date().toISOString(),
+      });
+      
+      return newShelf;
+    }
+  } catch (error) {
+    console.error("Fehler beim Erstellen des Regals:", error);
+    throw error;
+  }
+}
+
+/**
+ * Regal aktualisieren
+ */
+export async function updateUserShelf(userId, shelfId, updates) {
+  try {
+    // Standard-Regale können nicht bearbeitet werden
+    if (isProtectedShelf(shelfId)) {
+      throw new Error("Standard-Regale können nicht bearbeitet werden.");
+    }
+
+    const userDocRef = doc(db, "users", userId);
+    const userDocSnap = await getDoc(userDocRef);
+    
+    if (userDocSnap.exists()) {
+      const userData = userDocSnap.data();
+      const currentShelves = userData.customShelves || DEFAULT_LIBRARY_SHELVES;
+      
+      // Prüfen ob versucht wird, einen Standard-Titel zu verwenden
+      if (updates.title && PROTECTED_SHELF_IDS.some(id => 
+        updates.title.toLowerCase() === DEFAULT_LIBRARY_SHELVES.find(s => s.id === id)?.title?.toLowerCase()
+      )) {
+        throw new Error("Dieser Name ist für Standard-Regale reserviert. Bitte wählen Sie einen anderen Namen.");
+      }
+      
+      // Prüfen ob bereits ein anderes Regal mit diesem Titel existiert
+      if (updates.title && currentShelves.some(shelf => 
+        shelf.id !== shelfId && shelf.title.toLowerCase() === updates.title.toLowerCase()
+      )) {
+        throw new Error("Ein Regal mit diesem Namen existiert bereits.");
+      }
+      
+      const updatedShelves = currentShelves.map(shelf => 
+        shelf.id === shelfId ? { ...shelf, ...updates } : shelf
+      );
+      
+      await updateDoc(userDocRef, {
+        customShelves: updatedShelves,
+        updatedAt: new Date().toISOString(),
+      });
+      
+      return updatedShelves.find(shelf => shelf.id === shelfId);
+    }
+  } catch (error) {
+    console.error("Fehler beim Aktualisieren des Regals:", error);
+    throw error;
+  }
+}
+
+/**
+ * Regal löschen
+ */
+export async function deleteUserShelf(userId, shelfId) {
+  try {
+    // Standard-Regale können nicht gelöscht werden
+    if (isProtectedShelf(shelfId)) {
+      throw new Error("Standard-Regale können nicht gelöscht werden");
+    }
+    
+    const userDocRef = doc(db, "users", userId);
+    const userDocSnap = await getDoc(userDocRef);
+    
+    if (userDocSnap.exists()) {
+      const userData = userDocSnap.data();
+      const currentShelves = userData.customShelves || DEFAULT_LIBRARY_SHELVES;
+      
+      const updatedShelves = currentShelves.filter(shelf => shelf.id !== shelfId);
+      
+      await updateDoc(userDocRef, {
+        customShelves: updatedShelves,
+        updatedAt: new Date().toISOString(),
+      });
+      
+      return true;
+    }
+  } catch (error) {
+    console.error("Fehler beim Löschen des Regals:", error);
     throw error;
   }
 }

@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
     Alert,
@@ -49,7 +49,7 @@ const BOOKS_DATA = {
                 userId: "user2",
                 username: "BücherWurm",
                 rating: 4,
-                text: "Sehr episch und gut geschrieben, aber manchmal etwas langatmig. Die Beschreibungen der Landschaften sind wunderschön, aber es dauert lange bis die Geschichte richtig Fahrt aufnimmt.",
+                text: "",
                 createdAt: "2024-12-10T14:20:00Z",
                 likes: ["user1"],
                 isFriend: false
@@ -180,7 +180,7 @@ const BOOKS_DATA = {
                 userId: "user9",
                 username: "RealistIn",
                 rating: 3,
-                text: "Zu kitschig für meinen Geschmack. Die Botschaft ist nett, aber die Geschichte wirkt konstruiert und die Philosophie oberflächlich. Für Selbsthilfe-Fans sicher inspirierend.",
+                text: "",
                 createdAt: "2024-11-18T15:10:00Z",
                 likes: [],
                 isFriend: false
@@ -421,6 +421,7 @@ interface Review {
 
 export default function BookDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
+    const router = useRouter();
     const { user, userData } = useAuth();
     const [book, setBook] = useState<BookData | null>(null);
     const [reviews, setReviews] = useState<Review[]>([]);
@@ -497,8 +498,12 @@ export default function BookDetailScreen() {
     const handleSubmitReview = async () => {
         if (!user || !userData) return;
 
-        if (newReview.text.trim().length < 20) {
-            Alert.alert("Fehler", "Die Rezension muss mindestens 20 Zeichen lang sein.");
+        // Rezension ist gültig wenn entweder Text vorhanden ist (mindestens 20 Zeichen) oder nur Bewertung
+        const hasValidText = newReview.text.trim().length >= 20;
+        const isOnlyRating = newReview.text.trim().length === 0;
+        
+        if (!hasValidText && !isOnlyRating) {
+            Alert.alert("Fehler", "Die Rezension muss entweder leer sein (nur Bewertung) oder mindestens 20 Zeichen lang sein.");
             return;
         }
 
@@ -551,11 +556,20 @@ export default function BookDetailScreen() {
         <View style={styles.reviewCard}>
             <View style={styles.reviewHeader}>
                 <View style={styles.userInfo}>
-                    <View style={styles.avatar}>
+                    <TouchableOpacity
+                        style={styles.avatar}
+                        onPress={() => router.push(`/profile/${item.userId}`)}
+                        activeOpacity={0.7}
+                    >
                         <Ionicons name="person" size={20} color="#999" />
-                    </View>
+                    </TouchableOpacity>
                     <View style={styles.userDetails}>
-                        <Text style={styles.username}>{item.username}</Text>
+                        <TouchableOpacity
+                            onPress={() => router.push(`/profile/${item.userId}`)}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={styles.usernameClickable}>{item.username}</Text>
+                        </TouchableOpacity>
                         <View style={styles.ratingRow}>
                             {renderStars(item.rating, 14)}
                             <Text style={styles.reviewDate}>
@@ -573,9 +587,21 @@ export default function BookDetailScreen() {
                     <Text style={styles.likeCount}>{item.likes.length}</Text>
                 </TouchableOpacity>
             </View>
-            <Text style={styles.reviewText}>{item.text}</Text>
+            {item.text && item.text.trim() && (
+                <Text style={styles.reviewText}>{item.text}</Text>
+            )}
         </View>
     );
+
+    // UI State für Accordion und Dropdown (müssen immer aufgerufen werden)
+    const [detailsExpanded, setDetailsExpanded] = useState(false);
+    const [dropdownVisible, setDropdownVisible] = useState(false);
+    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+    const categories = [
+        { key: 'currently-reading', label: 'Lese ich gerade' },
+        { key: 'want-to-read', label: 'Will ich lesen' },
+        { key: 'read', label: 'Bereits gelesen' },
+    ];
 
     if (loading || !book) {
         return (
@@ -587,65 +613,98 @@ export default function BookDetailScreen() {
 
     return (
         <View style={styles.container}>
-            {/* Header */}
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                {/* Book Info Section */}
-                <View style={styles.bookSection}>
-                    <View style={styles.bookHeader}>
-                        <View style={styles.coverContainer}>
-                            <View style={styles.cover}>
-                                <Text style={styles.coverEmoji}>{book.cover}</Text>
-                            </View>
-                        </View>
-                        <View style={styles.bookInfo}>
-                            <Text style={styles.bookTitle}>{book.title}</Text>
-                            <Text style={styles.bookAuthor}>{book.authors.join(", ")}</Text>
-                            
-                            <View style={styles.ratingSection}>
-                                {renderStars(parseFloat(calculateAverageRating()), 18)}
-                                <Text style={styles.averageRating}>
-                                    {calculateAverageRating()} ({reviews.length} Bewertungen)
-                                </Text>
-                            </View>
-
-                            {/* Like Button */}
-                            <TouchableOpacity style={styles.favoriteButton}>
-                                <Ionicons name="heart-outline" size={24} color="#000" />
-                                <Text style={styles.favoriteText}> Auf meine Liste</Text>
-                            </TouchableOpacity>
-                        </View>
+                {/* Buchcover und Titel */}
+                <View style={[styles.bookSection, {alignItems: 'center', paddingBottom: 16}]}> 
+                    <View style={styles.coverLarge}>
+                        <Text style={styles.coverEmoji}>{book.cover}</Text>
                     </View>
-
-                    {/* Book Details */}
-                    <View style={styles.detailsSection}>
-                        <Text style={styles.description}>{book.description}</Text>
-                        
-                        <View style={styles.metaInfo}>
-                            <View style={styles.metaRow}>
-                                <Text style={styles.metaLabel}>Erscheinungsjahr:</Text>
-                                <Text style={styles.metaValue}>{book.publishedDate}</Text>
-                            </View>
-                            <View style={styles.metaRow}>
-                                <Text style={styles.metaLabel}>Seiten:</Text>
-                                <Text style={styles.metaValue}>{book.pageCount}</Text>
-                            </View>
-                            <View style={styles.metaRow}>
-                                <Text style={styles.metaLabel}>Verlag:</Text>
-                                <Text style={styles.metaValue}>{book.publisher}</Text>
-                            </View>
-                            <View style={styles.metaRow}>
-                                <Text style={styles.metaLabel}>ISBN:</Text>
-                                <Text style={styles.metaValue}>{book.isbn}</Text>
-                            </View>
-                            <View style={styles.metaRow}>
-                                <Text style={styles.metaLabel}>Genres:</Text>
-                                <Text style={styles.metaValue}>{book.categories.join(", ")}</Text>
-                            </View>
-                        </View>
+                    <Text style={styles.bookTitleCentered}>{book.title}</Text>
+                    <View style={styles.authorsContainer}>
+                        {book.authors.map((author, index) => (
+                            <React.Fragment key={author}>
+                                <TouchableOpacity
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={styles.bookAuthorClickable}>{author}</Text>
+                                </TouchableOpacity>
+                                {index < book.authors.length - 1 && (
+                                    <Text style={styles.authorSeparator}>, </Text>
+                                )}
+                            </React.Fragment>
+                        ))}
+                    </View>
+                    <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 8}}>
+                        {renderStars(parseFloat(calculateAverageRating()), 18)}
+                        <Text style={styles.averageRating}>
+                            {calculateAverageRating()} ({reviews.length} Bewertungen)
+                        </Text>
                     </View>
                 </View>
 
-                {/* Reviews Section */}
+                {/* Kategorie Dropdown - selbsterklärend */}
+                <View style={{paddingHorizontal: 24, marginBottom: 12}}>
+                    <Text style={styles.dropdownLabel}>Zu welcher Kategorie möchtest du dieses Buch in deiner Bibliothek hinzufügen?</Text>
+                    <TouchableOpacity
+                        style={styles.dropdownButton}
+                        onPress={() => setDropdownVisible((v) => !v)}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons name="library-outline" size={18} color="#007AFF" style={{ marginRight: 6 }} />
+                        <Text style={styles.dropdownButtonText}>
+                            {selectedCategory
+                                ? categories.find((c) => c.key === selectedCategory)?.label
+                                : 'Kategorie auswählen'}
+                        </Text>
+                        <Ionicons name={dropdownVisible ? "chevron-up" : "chevron-down"} size={18} color="#007AFF" style={{ marginLeft: 6 }} />
+                    </TouchableOpacity>
+                    {dropdownVisible && (
+                        <View style={styles.dropdownMenu}>
+                            {categories.map((cat) => (
+                                <TouchableOpacity
+                                    key={cat.key}
+                                    style={styles.dropdownItem}
+                                    onPress={() => {
+                                        setSelectedCategory(cat.key);
+                                        setDropdownVisible(false);
+                                    }}
+                                >
+                                    <Text style={styles.dropdownItemText}>{cat.label}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
+                </View>
+
+                {/* Accordion für Buchdetails */}
+                <View style={{paddingHorizontal: 24, marginBottom: 12}}>
+                    <TouchableOpacity
+                        style={styles.accordionHeaderSimple}
+                        onPress={() => setDetailsExpanded((v) => !v)}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons name="information-circle-outline" size={18} color="#666" style={{marginRight: 8}} />
+                        <Text style={styles.accordionTitleSimple}>Buchdetails anzeigen</Text>
+                        <Ionicons name={detailsExpanded ? "chevron-up" : "chevron-down"} size={18} color="#666" style={{marginLeft: 8}} />
+                    </TouchableOpacity>
+                    {detailsExpanded && (
+                        <View style={styles.accordionContentSimple}>
+                            <View style={styles.metaRow}><Text style={styles.metaLabel}>Erscheinungsjahr</Text><Text style={styles.metaValue}>{book.publishedDate}</Text></View>
+                            <View style={styles.metaRow}><Text style={styles.metaLabel}>Seiten</Text><Text style={styles.metaValue}>{book.pageCount}</Text></View>
+                            <View style={styles.metaRow}><Text style={styles.metaLabel}>Verlag</Text><Text style={styles.metaValue}>{book.publisher}</Text></View>
+                            <View style={styles.metaRow}><Text style={styles.metaLabel}>ISBN</Text><Text style={styles.metaValue}>{book.isbn}</Text></View>
+                            <View style={styles.metaRow}><Text style={styles.metaLabel}>Genres</Text><Text style={styles.metaValue}>{book.categories.join(", ")}</Text></View>
+                            <View style={styles.metaRow}><Text style={styles.metaLabel}>Sprache</Text><Text style={styles.metaValue}>{book.language}</Text></View>
+                        </View>
+                    )}
+                </View>
+
+                {/* Buchbeschreibung */}
+                <View style={{paddingHorizontal: 24, marginBottom: 24}}>
+                    <Text style={styles.description}>{book.description}</Text>
+                </View>
+
+                {/* Rezensionen */}
                 <View style={styles.reviewsSection}>
                     <View style={styles.reviewsHeader}>
                         <Text style={styles.reviewsTitle}>
@@ -673,25 +732,23 @@ export default function BookDetailScreen() {
                             {renderStars(newReview.rating, 24, true, (rating) => 
                                 setNewReview(prev => ({ ...prev, rating }))
                             )}
-                            
-                            <Text style={styles.formLabel}>Deine Meinung (mindestens 20 Zeichen)</Text>
+                            <Text style={styles.formLabel}>Deine Meinung (optional, mindestens 20 Zeichen)</Text>
                             <TextInput
                                 style={styles.reviewInput}
                                 multiline
                                 numberOfLines={4}
-                                placeholder="Schreibe deine Rezension..."
+                                placeholder="Schreibe deine Rezension... (optional)"
                                 value={newReview.text}
                                 onChangeText={(text) => setNewReview(prev => ({ ...prev, text }))}
                                 editable={!submitting}
                             />
-                            
                             <TouchableOpacity 
                                 style={[
                                     styles.submitButton,
-                                    (newReview.text.trim().length < 20 || submitting) && styles.submitButtonDisabled
+                                    submitting && styles.submitButtonDisabled
                                 ]}
                                 onPress={handleSubmitReview}
-                                disabled={newReview.text.trim().length < 20 || submitting}
+                                disabled={submitting}
                             >
                                 <Text style={styles.submitButtonText}>
                                     {submitting ? "Wird gesendet..." : "Rezension veröffentlichen"}
@@ -716,6 +773,115 @@ export default function BookDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  // Cover Large
+  coverLarge: {
+    width: 120,
+    height: 180,
+    borderRadius: 12,
+    backgroundColor: '#fafafa',
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  bookTitleCentered: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#000',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  bookAuthorCentered: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '400',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  authorsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  bookAuthorClickable: {
+    fontSize: 16,
+    color: '#007AFF',
+    fontWeight: '400',
+    textDecorationLine: 'underline',
+  },
+  authorSeparator: {
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '400',
+  },
+  // Dropdown Styles
+  dropdownLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 6,
+    textAlign: 'left',
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#f8f8f8',
+  },
+  dropdownButtonText: {
+    fontSize: 15,
+    color: '#007AFF',
+    fontWeight: '500',
+  },
+  dropdownMenu: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    marginTop: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    zIndex: 10,
+  },
+  dropdownItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+  },
+  dropdownItemText: {
+    fontSize: 15,
+    color: '#333',
+  },
+  // Accordion Styles (Simple)
+  accordionHeaderSimple: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  accordionTitleSimple: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333',
+  },
+  accordionContentSimple: {
+    backgroundColor: '#fafafa',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 2,
+    gap: 6,
+  },
     container: {
         flex: 1,
         backgroundColor: "#fff",
@@ -950,6 +1116,12 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: "600",
         color: "#000",
+    },
+    usernameClickable: {
+        fontSize: 14,
+        fontWeight: "600",
+        color: "#007AFF",
+        textDecorationLine: "underline",
     },
     ratingRow: {
         flexDirection: "row",

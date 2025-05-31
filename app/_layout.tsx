@@ -9,6 +9,21 @@ export default function RootLayout() {
         <Stack.Screen name="auth" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen 
+          name="library/[category]" 
+          options={{
+            headerShown: true,
+            headerStyle: {
+              backgroundColor: "#fff",
+            },
+            headerTintColor: "#000",
+            headerTitleStyle: {
+              fontWeight: "600",
+              fontSize: 18,
+            },
+            headerBackTitle: "",
+          }}
+        />
+        <Stack.Screen 
           name="book/[id]" 
           options={{
             headerShown: true,

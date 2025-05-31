@@ -74,26 +74,30 @@ export default function LibraryScreen() {
             <View style={styles.bookCover}>
                 <Text style={styles.bookEmoji}>{item.cover}</Text>
             </View>
-            <Text style={styles.bookTitle} numberOfLines={2}>{item.title}</Text>
-            <Text style={styles.bookAuthor} numberOfLines={1}>{item.author}</Text>
-            <View style={styles.starsContainer}>
-                {renderStars(item.rating)}
-            </View>
+            {/* Nur das Cover anzeigen, keine weiteren Infos */}
         </TouchableOpacity>
     );
 
     const renderBookCategory = (categoryKey: keyof typeof BOOK_CATEGORIES) => {
         const category = BOOK_CATEGORIES[categoryKey];
-        
+        const handleSeeAll = () => {
+            // Navigiere zum neuen Kategorie-Listen-Screen und übergebe Titel und Bücher als JSON
+            router.push({
+                pathname: "/library/category-list",
+                params: {
+                    title: category.title,
+                    books: JSON.stringify(category.books),
+                },
+            });
+        };
         return (
             <View key={categoryKey} style={styles.categorySection}>
                 <View style={styles.categoryHeader}>
                     <Text style={styles.categoryTitle}>{category.title}</Text>
-                    <TouchableOpacity>
+                    <TouchableOpacity onPress={handleSeeAll}>
                         <Text style={styles.seeAllText}>Alle anzeigen</Text>
                     </TouchableOpacity>
                 </View>
-                
                 <FlatList
                     data={category.books}
                     renderItem={renderBookItem}
